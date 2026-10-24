@@ -1,0 +1,130 @@
+{
+  "known_malware_hashes": [
+    "44d88612fea8a8f36de82e1278abb02f",
+    "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+    "e13b6573a1a674b5e857b4ab93284e27",
+    "92a35f1c62eefc8a31df16f2e6973cf4"
+  ],
+  "suspicious_strings": [
+    "CreateRemoteThread",
+    "VirtualAllocEx",
+    "WriteProcessMemory",
+    "NtUnmapViewOfSection",
+    "ZwUnmapViewOfSection",
+    "RtlDecompressBuffer",
+    "IsDebuggerPresent",
+    "CheckRemoteDebuggerPresent",
+    "NtQueryInformationProcess",
+    "GetProcAddress",
+    "LoadLibraryA",
+    "WSAStartup",
+    "WSAConnect",
+    "cmd.exe /c",
+    "powershell -enc",
+    "powershell -nop",
+    "certutil -decode",
+    "bitsadmin /transfer",
+    "reg add HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+    "schtasks /create",
+    "at.exe",
+    "wscript.exe",
+    "cscript.exe",
+    "mshta.exe",
+    "regsvr32 /s /n /u /i:",
+    "vssadmin delete shadows",
+    "bcdedit /set",
+    "wbadmin delete"
+  ],
+  "ransomware_extensions": [
+    ".locky",
+    ".zepto",
+    ".odin",
+    ".aesir",
+    ".cerber",
+    ".cerber2",
+    ".cerber3",
+    ".crypted",
+    ".crypt",
+    ".encrypted",
+    ".enc",
+    ".locked",
+    ".vault",
+    ".wnry",
+    ".wncry",
+    ".wannacry",
+    ".petya",
+    ".nopetyaaa",
+    ".exe.encrypted",
+    ".ryuk",
+    ".revil",
+    ".sodinokibi",
+    ".darkside",
+    ".lockbit",
+    ".blackmatter"
+  ],
+  "malicious_processes": [
+    "mimikatz.exe",
+    "pwdump.exe",
+    "fgdump.exe",
+    "gsecdump.exe",
+    "wce.exe",
+    "quarks-pwdump.exe",
+    "cachedump.exe",
+    "meterpreter",
+    "metasploit",
+    "cobaltstrike",
+    "beacon.exe",
+    "empire.exe",
+    "powersploit",
+    "sharphound.exe",
+    "ncrack.exe",
+    "hydra.exe",
+    "medusa.exe",
+    "nmap.exe",
+    "masscan.exe",
+    "zmap.exe"
+  ],
+  "suspicious_ips": [
+    "185.220.101.",
+    "178.62.",
+    "198.199.",
+    "45.33.",
+    "104.131.",
+    "192.241."
+  ],
+  "yara_like_rules": [
+    {
+      "name": "RANSOMWARE_SHADOW_DELETE",
+      "description": "Shadow copy deletion - common ransomware behavior",
+      "pattern": "vssadmin.*delete.*shadows|wmic.*shadowcopy.*delete",
+      "score": 95
+    },
+    {
+      "name": "POWERSHELL_ENCODED_CMD",
+      "description": "PowerShell encoded command execution",
+      "pattern": "powershell.*-e[nc]{1,2}\\s+[A-Za-z0-9+/=]{20,}",
+      "score": 75
+    },
+    {
+      "name": "PROCESS_INJECTION",
+      "description": "Classic process injection technique",
+      "pattern": "VirtualAllocEx.{0,100}WriteProcessMemory.{0,100}CreateRemoteThread",
+      "score": 90
+    },
+    {
+      "name": "CREDENTIAL_DUMP",
+      "description": "LSASS credential dumping attempt",
+      "pattern": "lsass\\.exe|sekurlsa|wdigest|kerberos.*credentials",
+      "score": 85
+    },
+    {
+      "name": "LATERAL_MOVEMENT",
+      "description": "Lateral movement via PSExec or WMI",
+      "pattern": "psexec|wmiexec|wmic.*process.*call.*create",
+      "score": 80
+    }
+  ],
+  "_version": "2026.1.0",
+  "_updated": "2026-03-18T16:16:18.800076",
+  "_count": 90
+}

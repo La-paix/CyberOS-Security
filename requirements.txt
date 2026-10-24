@@ -1,0 +1,21 @@
+# ============================================================
+# CyberOS_Security v2026.2 — Dépendances Python
+# ============================================================
+# Installation complète :
+#   pip install psutil cryptography reportlab
+# ============================================================
+
+# OBLIGATOIRES — sans ces packages, l'app ne démarre pas
+psutil>=5.9.0
+cryptography>=41.0.0
+
+# OBLIGATOIRE pour les rapports PDF
+reportlab>=4.0.0
+
+# tkinter est INCLUS dans Python (pas de pip install)
+# Si manquant sur Linux : sudo apt install python3-tk
+# Si manquant sur macOS  : brew install python-tk
+
+# OPTIONNELS (fonctionnalités avancées)
+# pyaudio>=0.2.13       # Authentification vocale réelle
+# yara-python>=4.3.0    # Moteur YARA complet (+ de règles)

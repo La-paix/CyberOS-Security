@@ -1,0 +1,52 @@
+﻿
+# Configuration privee
+config.env
+.env
+.env.*
+*.env
+!.env.example
+*.key
+*.pem
+*.pfx
+*.p12
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Fichiers generes
+/logs/
+/reports/
+/quarantine/
+*.log
+
+# Configuration privee
+config.env
+.env
+.env.*
+*.env
+!.env.example
+*.key
+*.pem
+*.pfx
+*.p12
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Fichiers generes
+/logs/
+/reports/
+/quarantine/
+*.log
+
+# Configuration et donnees locales
+/data/config.json
+/security/auth/
+/security/keys/
+/security/state.json
