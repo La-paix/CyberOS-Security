@@ -22,7 +22,7 @@ def _load_env() -> dict:
                 k, _, v = line.partition("=")
                 env[k.strip()] = v.strip()
     # Variables d'environnement système ont priorité
-    for k in ("ANTHROPIC_API_KEY", "LOG_LEVEL", "AUTO_PROTECT", "AUTO_QUARANTINE"):
+    for k in ("ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "AI_REMOTE_ENABLED", "LOG_LEVEL", "AUTO_PROTECT", "AUTO_QUARANTINE"):
         if os.environ.get(k):
             env[k] = os.environ[k]
     return env
@@ -36,16 +36,15 @@ class AICore:
         self._claude_available = False
         self._stats = {"local_analyses": 0, "claude_analyses": 0, "total": 0}
         if self._api_key:
-            self.log.info("AI: Clé API détectée dans config.env — test de connexion au démarrage")
-            self._test_on_startup()
+            self.log.info("AI: Clé configurée. Utilisation distante désactivée tant que AI_REMOTE_ENABLED n'est pas activé.")
         else:
-            self.log.info("AI: Aucune clé API — mode IA locale actif (100% fonctionnel)")
+            self.log.info("AI: Aucune clé API — mode local actif, contrôles heuristiques disponibles")
 
     def _test_on_startup(self):
         """Test silencieux de la clé au démarrage."""
         try:
             req_data = json.dumps({
-                "model": "claude-sonnet-4-20250514",
+                "model": self._env.get("ANTHROPIC_MODEL", ""),
                 "max_tokens": 5,
                 "messages": [{"role": "user", "content": "ok"}]
             }).encode()
@@ -68,15 +67,20 @@ class AICore:
         """Recharge config.env sans redémarrer l'app."""
         self._env = _load_env()
         self._api_key = self._env.get("ANTHROPIC_API_KEY", "").strip()
-        if self._api_key:
-            self._test_on_startup()
-        else:
-            self._claude_available = False
+        self._claude_available = False
         self.log.audit("AI: Configuration rechargée")
 
     def analyze_threat(self, context: dict) -> dict:
         self._stats["total"] += 1
-        if self._api_key and self._claude_available:
+        if context.get("unconfirmed_file"):
+            self._stats["local_analyses"] += 1
+            score = max(0, min(65, int(context.get("local_score", 0) or 0)))
+            return {"score": score, "risk_level": "REVIEW" if score else "NO_INDICATOR",
+                    "verdict": "Indices statiques a examiner" if score else "Aucun indice statique retenu",
+                    "explanation": "Analyse statique partielle; aucune execution ni absence de menace certifiee.",
+                    "actions": ["INVESTIGATE"] if score else [], "source": "LOCAL_AI",
+                    "ts": datetime.utcnow().isoformat()}
+        if self._api_key and self._env.get("ANTHROPIC_MODEL") and self._env.get("AI_REMOTE_ENABLED", "").lower() in {"1", "true", "yes"}:
             result = self._claude_analyze(context)
             if result:
                 self._stats["claude_analyses"] += 1
@@ -97,7 +101,7 @@ class AICore:
                 f"verdict (string), actions (liste strings), explanation (string)."
             )
             req_data = json.dumps({
-                "model": "claude-sonnet-4-20250514",
+                "model": self._env.get("ANTHROPIC_MODEL", ""),
                 "max_tokens": 600,
                 "system": ("Tu es un expert EDR/XDR. "
                            "Analyse les indicateurs de menace. "
@@ -119,6 +123,13 @@ class AICore:
                     text = text.split("```")[1]
                     if text.startswith("json"): text = text[4:]
                 result = json.loads(text.strip())
+                if not isinstance(result, dict) or not isinstance(result.get("score"), (int, float)):
+                    raise ValueError("Réponse IA invalide")
+                result["score"] = max(0, min(100, int(result["score"])))
+                result["risk_level"] = ("CRITICAL" if result["score"] >= 80 else "HIGH" if result["score"] >= 60
+                                        else "MEDIUM" if result["score"] >= 40 else "LOW" if result["score"] >= 20 else "CLEAN")
+                result["actions"] = result.get("actions", []) if isinstance(result.get("actions", []), list) else []
+                self._claude_available = True
                 result["source"] = "CLAUDE_AI"
                 result["ts"] = datetime.utcnow().isoformat()
                 return result
@@ -129,7 +140,7 @@ class AICore:
 
     def _local_analyze(self, context: dict) -> dict:
         """IA locale — scoring multi-facteurs, 100% hors-ligne."""
-        score = 0
+        score = max(0, min(100, int(context.get("local_score", 0) or 0)))
         reasons = []
         actions = []
         weights = {
@@ -144,7 +155,7 @@ class AICore:
             if ind in weights and present:
                 w = weights[ind]
                 if isinstance(present, (int, float)) and present != 1:
-                    w = int(w * min(present, 1.0))
+                    w = int(w * max(0.0, min(present, 1.0)))
                 score += w
                 reasons.append(f"{ind} (+{w})")
 

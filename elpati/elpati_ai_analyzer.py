@@ -7,13 +7,15 @@ from collections import defaultdict, deque
 from datetime import datetime
 
 class ElpatiAIAnalyzer:
-    def __init__(self):
+    def __init__(self, threat_intel=None):
         from elpati.elpati_log import ElpatiLog
         self.log = ElpatiLog()
         self._baselines = {}
         self._anomaly_scores = deque(maxlen=1000)
         self._model_file = None
         self._stats = {"analyzed": 0, "anomalies": 0}
+        from elpati.elpati_threat_intel import ElpatiThreatIntel
+        self._threat_intel = threat_intel if threat_intel is not None else ElpatiThreatIntel()
 
     def calculate_threat_score(self, indicators: dict) -> dict:
         """
@@ -38,13 +40,18 @@ class ElpatiAIAnalyzer:
             "unsigned_executable": 35,
             "hidden_file": 40,
             "suspicious_extension": 45,
+            "extension_mismatch": 45,
+            "suspicious_location": 20,
+            "anomalous_size": 15,
         }
 
         for indicator, value in indicators.items():
             if indicator in weights and value:
                 w = weights[indicator]
-                if isinstance(value, (int, float)):
-                    contribution = min(w, w * value / 100)
+                if isinstance(value, bool):
+                    contribution = w
+                elif isinstance(value, (int, float)):
+                    contribution = min(w, max(0, w * value / 100))
                 else:
                     contribution = w
                 score += contribution
@@ -78,73 +85,28 @@ class ElpatiAIAnalyzer:
         return "No action required."
 
     def analyze_file_heuristic(self, filepath: str) -> dict:
-        """Heuristic file analysis without signature matching."""
-        import os
+        """Collect bounded static observations; these never confirm infection."""
         from pathlib import Path
-        indicators = {}
-        notes = []
-
         try:
             p = Path(filepath)
-            if not p.exists():
-                return {"error": "File not found"}
-
-            stat = p.stat()
-            ext = p.suffix.lower()
-            size = stat.st_size
-
-            # Check extension vs content mismatch
-            try:
-                with open(filepath, "rb") as f:
-                    magic = f.read(4)
-                if ext in [".jpg", ".jpeg"] and magic[:2] != b'\xff\xd8':
-                    indicators["extension_mismatch"] = True
-                    notes.append("Extension mismatch: not a real JPEG")
-                if ext in [".pdf"] and magic[:4] != b'%PDF':
-                    indicators["extension_mismatch"] = True
-                    notes.append("Extension mismatch: not a real PDF")
-                if ext in [".png"] and magic[:4] != b'\x89PNG':
-                    indicators["extension_mismatch"] = True
-            except:
-                pass
-
-            # Check for executable in unexpected location
-            if ext in [".exe", ".dll", ".sys", ".scr"]:
-                suspicious_paths = ["temp", "tmp", "appdata", "downloads", "documents"]
-                path_lower = str(p).lower()
-                if any(s in path_lower for s in suspicious_paths):
-                    indicators["suspicious_location"] = True
-                    notes.append(f"Executable in suspicious path: {filepath}")
-
-            # Check file size anomalies
-            if ext in [".txt", ".log"] and size > 50 * 1024 * 1024:
-                indicators["anomalous_size"] = True
-
-            # Entropy check
-            from elpati.elpati_ransom_guard import ElpatiRansomGuard
-            entropy_result = ElpatiRansomGuard().check_file_entropy(filepath)
-            if entropy_result.get("suspected_encrypted"):
-                indicators["high_entropy_file"] = True
-                notes.append(f"High entropy: {entropy_result['entropy']:.2f}")
-
-            # String scan
-            try:
-                with open(filepath, "rb") as f:
-                    content = f.read(1024 * 1024)  # First 1MB
-                from elpati.elpati_threat_intel import ElpatiThreatIntel
-                ti_results = ElpatiThreatIntel().scan_strings(
-                    content.decode("utf-8", errors="replace"))
-                if ti_results:
-                    indicators["suspicious_string"] = True
-                    notes.extend([r.get("name", r.get("match", "")) for r in ti_results[:3]])
-            except:
-                pass
-
-            result = self.calculate_threat_score(indicators)
-            result["filepath"] = filepath
-            result["notes"] = notes
-            return result
-
+            with open(filepath, "rb") as stream:
+                sample = stream.read(1024 * 1024)
+            from collections import Counter
+            entropy_sample = sample[:65536]
+            counts = Counter(entropy_sample)
+            size = len(entropy_sample)
+            entropy = -sum((count / size) * math.log2(count / size) for count in counts.values()) if size else 0
+            evidence = self._threat_intel.file_review_patterns(sample.decode("utf-8", errors="replace"), p.suffix.lower())
+            score = max((item["score"] for item in evidence), default=0)
+            self._stats["analyzed"] += 1
+            if evidence:
+                self._stats["anomalies"] += 1
+            return {"filepath": filepath, "score": score, "risk_level": self._score_to_level(score),
+                    "confirmed": False, "review_required": bool(evidence), "evidence": evidence,
+                    "sample_entropy": round(entropy, 4), "sample_bytes": len(sample),
+                    "notes": [item["name"] for item in evidence],
+                    "recommendation": "Examiner les indices statiques; aucune execution ni infection confirmee.",
+                    "ts": datetime.utcnow().isoformat()}
         except Exception as e:
             return {"error": str(e), "filepath": filepath}
 

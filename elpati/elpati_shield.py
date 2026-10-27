@@ -3,6 +3,8 @@ ELPATI SHIELD - Active Protection & Process/Network Blocking
 Terminates malicious processes and blocks network connections
 """
 import os, signal, subprocess, psutil
+import ipaddress
+import platform
 from datetime import datetime
 
 class ElpatiShield:
@@ -11,10 +13,11 @@ class ElpatiShield:
         self.log = ElpatiLog()
         self._blocked_pids = set()
         self._action_history = []
-        self._protection_level = "ACTIVE"  # PASSIVE, ACTIVE, AGGRESSIVE
+        self._protection_level = "PASSIVE"  # PASSIVE, ACTIVE, AGGRESSIVE
 
     def set_protection_level(self, level: str):
-        assert level in ("PASSIVE", "ACTIVE", "AGGRESSIVE")
+        if level not in ("PASSIVE", "ACTIVE", "AGGRESSIVE"):
+            raise ValueError("Niveau inconnu")
         self._protection_level = level
         self.log.audit(f"Shield: Protection level set to {level}")
 
@@ -23,9 +26,13 @@ class ElpatiShield:
         if self._protection_level == "PASSIVE":
             self.log.warning(f"Shield PASSIVE: would kill PID {pid} but skipped")
             return {"action": "skipped", "reason": "passive_mode", "pid": pid}
+        if pid in {0, 1, os.getpid(), os.getppid()}:
+            return {"action": "denied", "reason": "protected_pid", "pid": pid}
         try:
             proc = psutil.Process(pid)
             proc_name = proc.name()
+            if proc_name.lower() in {"system", "registry", "smss.exe", "csrss.exe", "wininit.exe", "lsass.exe", "services.exe"}:
+                return {"action": "denied", "reason": "system_process", "pid": pid}
             if force:
                 proc.kill()
             else:
@@ -42,55 +49,56 @@ class ElpatiShield:
             self.log.error(f"Shield: Access denied killing PID {pid}")
             return {"action": "denied", "pid": pid}
 
-    def quarantine_file(self, filepath: str, quarantine_dir: str) -> dict:
-        """Move file to quarantine."""
-        import shutil
-        from pathlib import Path
-        try:
-            src = Path(filepath)
-            dst_dir = Path(quarantine_dir)
-            dst_dir.mkdir(parents=True, exist_ok=True)
-            dst = dst_dir / f"{src.name}.quarantine"
-            shutil.move(str(src), str(dst))
-            self.log.threat(f"Shield: File quarantined {filepath} -> {dst}")
-            return {"action": "quarantined", "original": filepath, "destination": str(dst),
-                    "ts": datetime.utcnow().isoformat()}
-        except Exception as e:
-            self.log.error(f"Shield: Quarantine failed for {filepath}: {e}")
-            return {"action": "failed", "error": str(e)}
+    def quarantine_file(self, filepath, quarantine_dir=None):
+        from quarantine.quarantine_manager import QuarantineManager
+        if self._protection_level == "PASSIVE":
+            return {"action": "skipped", "reason": "passive_mode"}
+        return QuarantineManager().quarantine_file(filepath, {"source": "shield"})
 
     def isolate_process(self, pid: int) -> dict:
         """Reduce process priority to minimal."""
+        if self._protection_level == "PASSIVE":
+            return {"action": "skipped", "reason": "passive_mode", "pid": pid}
+        if pid in {0, 1, os.getpid(), os.getppid()}:
+            return {"action": "denied", "reason": "protected_pid", "pid": pid}
         try:
             proc = psutil.Process(pid)
-            proc.nice(19)  # Lowest priority
-            action = {"action": "isolated", "pid": pid, "ts": datetime.utcnow().isoformat()}
+            proc.nice(psutil.IDLE_PRIORITY_CLASS if os.name == "nt" else 19)  # Lowest priority
+            action = {"action": "priority_reduced", "pid": pid, "ts": datetime.utcnow().isoformat()}
             self._action_history.append(action)
-            self.log.audit(f"Shield: Process {pid} isolated (priority reduced)")
+            self.log.audit(f"Shield: Process {pid} priority reduced (not network-isolated)")
             return action
         except Exception as e:
             return {"action": "failed", "error": str(e), "pid": pid}
 
-    def block_network_ip(self, ip: str) -> dict:
-        """Block IP using OS firewall (Linux iptables / macOS pf)."""
+    def block_network_ip(self, ip, unblock=False):
+        try:
+            ip = str(ipaddress.ip_address(ip))
+        except ValueError:
+            return {"action": "failed", "error": "Adresse IP invalide"}
         if self._protection_level == "PASSIVE":
             return {"action": "skipped", "reason": "passive_mode"}
         try:
-            if os.name == 'posix':
-                # Try iptables (Linux)
-                result = subprocess.run(
-                    ["iptables", "-A", "OUTPUT", "-d", ip, "-j", "DROP"],
-                    capture_output=True, timeout=5)
-                if result.returncode == 0:
-                    action = {"action": "blocked", "ip": ip, "method": "iptables",
-                              "ts": datetime.utcnow().isoformat()}
-                    self.log.audit(f"Shield: IP {ip} blocked via iptables")
-                    self._action_history.append(action)
-                    return action
-        except Exception as e:
-            pass
-        return {"action": "manual_required", "ip": ip,
-                "note": f"Add firewall rule to block {ip}"}
+            if os.name == "nt":
+                name = f"CyberOS-block-{ip}"
+                command = (["netsh", "advfirewall", "firewall", "delete", "rule", f"name={name}"]
+                           if unblock else ["netsh", "advfirewall", "firewall", "add", "rule",
+                           f"name={name}", "dir=out", "action=block", f"remoteip={ip}"])
+            elif platform.system() == "Linux":
+                binary = "ip6tables" if ":" in ip else "iptables"
+                command = [binary, "-D" if unblock else "-A", "OUTPUT", "-d", ip, "-j", "DROP"]
+            else:
+                return {"action": "manual_required", "ip": ip, "reason": "platform_not_supported"}
+            result = subprocess.run(command, capture_output=True, timeout=5)
+            if result.returncode:
+                return {"action": "failed", "ip": ip, "reason": "firewall_command_failed"}
+            action = {"action": "unblocked" if unblock else "blocked", "ip": ip,
+                      "ts": datetime.utcnow().isoformat()}
+            self._action_history.append(action)
+            self.log.audit(f"Shield firewall: {action}")
+            return action
+        except (OSError, subprocess.SubprocessError) as exc:
+            return {"action": "manual_required", "ip": ip, "error": str(exc)}
 
     def get_action_history(self, n=50):
         return self._action_history[-n:]

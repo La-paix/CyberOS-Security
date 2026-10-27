@@ -1,0 +1,617 @@
+{
+  "date": "2026-10-27",
+  "platform": "Windows",
+  "evidence": "User-supplied Windows PowerShell log; this is an observed local run, not a GitHub Actions result.",
+  "python_version_in_this_log": null,
+  "duration_sec": 124.825,
+  "total": 149,
+  "passed": 149,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "core_tests": 106,
+  "gui_tests": 43,
+  "main_check": "PASS",
+  "eicar_on_disk": "PASS",
+  "tested_archive_sha256": "74e2113683531733d562e0d37907d63d1e29db47b3658b1224d2c6ff6dbe3524",
+  "source_manifest_sha256": "1d545ee47b3f417718eb16ad5d3826d43e1717f343a30c7468fa1827c6e59eee",
+  "evidence_log_sha256": "df55f852b2026a46a901564c8a40ce629e3ba0a2733f1f4fd3e96d37127e1efd",
+  "tests": [
+    {
+      "test": "__main__.IsolatedCase.test_01_first_setup_has_no_default_password",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_02_password_change",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_03_password_confirmation_and_length",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_04_lockout_survives_new_auth_instance",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_05_corrupt_password_fails_closed",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_06_missing_password_does_not_reset",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_07_authenticated_password_set_required",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_08_encryption_roundtrip",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_09_ciphertext_tamper",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_100_quick_scan_scope_is_bounded_and_full_scan_keeps_deep_files",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_101_large_pdf_keeps_all_results_in_json_and_limits_pages",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_102_python_shell_call_is_reviewed_but_never_executed",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_103_ransomguard_does_not_escalate_generic_encrypted_files",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_104_file_ai_never_recommends_destructive_action_for_static_evidence",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_105_live_extension_review_cannot_trigger_automatic_response",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_10_copied_salt_cannot_reconstruct_key",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_11_lost_key_fails_closed",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_12_corrupt_key_fails_closed",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_13_rsa_sign_verify_restart",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_14_sha256_md5_and_sha3",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_15_manifest_accepts_current_release",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_16_manifest_detects_modified_source",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_17_manifest_detects_deleted_source",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_18_manifest_detects_unlisted_source",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_19_windows_manifest_paths",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_20_corrupt_manifest_fails_closed",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_21_missing_manifest_fails_closed",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_22_evidence_roundtrip_hash",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_23_evidence_path_traversal_rejected",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_24_evidence_unique_ids",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_25_quarantine_roundtrip",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_26_quarantine_same_filename_collision",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_27_quarantine_restore_no_overwrite",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_28_quarantine_corrupt_payload_preserved",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_29_quarantine_corrupt_index_fails_closed",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_30_quarantine_delete_and_missing_file",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_31_quarantine_two_instances",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_32_clean_file_scan",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_33_eicar_real_file_signature",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_33b_eicar_signature_stream_without_disk_payload",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_34_custom_hash_all_algorithms",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_35_custom_signature_persists",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_36_ransomware_extension_and_custom_signature",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_37_scan_progress_and_duplicates",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_38_scan_failure_counted",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_39_scan_stop_cancels_pending_work",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_40_scan_recovers_after_exception",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_41_empty_process_name_not_malicious",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_42_ai_boolean_indicators_have_full_weight",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_43_local_ai_preserves_module_score",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_44_remote_api_disabled_by_default",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_45_remote_failure_falls_back",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_46_log_genesis_and_later_tamper",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_47_log_restart_keeps_entries",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_48_log_corruption_not_reset",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_49_license_sign_verify",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_50_license_expired_rejected",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_51_license_activation_restart",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_52_license_renewal_does_not_extend_expiry",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_53_license_machine_binding",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_54_license_client_cannot_issue",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_55_license_tampered_local_state_rejected",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_56_license_missing_public_key",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_57_forensic_json_vault_and_canonical_hash",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_58_pdf_url_and_scan_reports",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_59_pdf_general_report",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_60_scheduler_day_filter_and_unique_ids",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_61_scheduler_due_once",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_62_scheduler_validation",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_63_fim_detects_modification_and_deletion",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_64_ransomguard_honeypot_entropy",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_65_auto_response_disabled_and_unsupported_truthful",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_66_shield_passive_and_protected_pid",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_67_firewall_invalid_input_and_failure",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_68_network_guard_alert_callback",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_69_url_parser_rejects_unsafe_schemes",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_70_url_blacklist_not_diluted",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_71_url_offline_is_inconclusive",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_72_url_local_http_redirect_and_content",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_73_assistant_local_respects_remote_opt_in",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_74_module_initialization_and_shutdown",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_75_cli_all_menu_routes",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_76_main_check_and_source_unchanged",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_77_instance_lock_exclusive",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_78_legacy_migration_preserves_data",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_79_legacy_corruption_aborts_without_key",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_80_migration_rollback_after_interrupted_commit",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_81_sandbox_is_static_and_benign_signature",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_82_memory_metadata_with_string_address",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_83_cli_startup_in_separate_process",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_84_quarantine_metadata_write_failure_keeps_original",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_85_quarantine_parallel_operations",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_86_native_shield_command_results_are_reported",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_87_url_cache_returns_independent_snapshot",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_88_python_310_grammar",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_89_lost_rsa_private_key_requires_recovery",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_90_current_auto_protect_setting_applied",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_91_eicar_fixture_io_classification_is_conservative",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_92_eicar_fixture_interruption_is_not_a_detection_success",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_93_common_windows_imports_do_not_identify_malware",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_94_security_source_literals_are_not_executed_commands",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_95_hash_matches_survive_ordinary_names_and_encrypted_extensions",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_96_generic_encrypted_extension_is_not_a_ransomware_verdict",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_97_high_entropy_alone_is_not_malware",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_98_static_command_requires_review_without_confirmed_infection",
+      "status": "PASS"
+    },
+    {
+      "test": "__main__.IsolatedCase.test_99_auto_quarantine_rejects_unconfirmed_static_alerts",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_appearance_themes_languages_fonts",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_assistant_send",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_closing_cancels_timers",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_forensic_action_generates_json",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_fresh_install_password_setup",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_full_pdf_action",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_full_scan_action_and_pdf",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_general_pdf_action",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_login_password_and_dashboard",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_settings_api",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_settings_appearance",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_settings_general",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_settings_language",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_settings_license",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_settings_security",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_show_ai_analyst",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_show_assistant",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_show_auto_response",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_show_forensic",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_show_full_scan",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_show_logs",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_show_memory",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_show_network",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_show_overview",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_show_processes",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_show_quarantine",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_show_quick_scan",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_show_sandbox",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_show_scheduler",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_show_settings",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_show_threats",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_show_url_scanner",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_page_show_vuln_scan",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_pdf_empty_results_prompt",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_quarantine_restore_button",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_scan_distinguishes_static_review_and_signature_matches",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_scan_failure_recovers_controls",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_scan_navigation_does_not_lock_future_scans",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_scan_stop_action",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_scheduler_pause_and_delete",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_shutdown_stops_background_modules",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_url_action_and_pdf",
+      "status": "PASS"
+    },
+    {
+      "test": "gui_suite.GUICase.test_gui_worker_result_after_navigation",
+      "status": "PASS"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-# Configuration privee
+# Configuration et secrets locaux
 config.env
 .env
 .env.*
@@ -8,27 +8,37 @@ config.env
 *.pem
 *.pfx
 *.p12
+/private-licenses/
+/.local-backups/
+/security/keys/
+/security/auth/
+/security/vault/
+/security/honeypots/
+/security/state.json
+/security/fim_baseline.json
+/security/instance.lock
+/security/migration_in_progress.json
+/data/config.json
+/data/schedules.json
+/threat_db/custom_signatures.json
 
-# Python
+# Python et outils de développement
 __pycache__/
 *.py[cod]
 .venv/
 venv/
-
-# Sorties de l'application
-/logs/
-/reports/
+.pytest_cache/
+.ruff_cache/
+.coverage
+/dist/
 *.log
 
-# Conserver uniquement les sources connues du gestionnaire de quarantaine
+# Ne pas exclure les sources des rapports et de la quarantaine
+/logs/
+/reports/*
+!/reports/__init__.py
+!/reports/pdf_generator.py
 /quarantine/*
 !/quarantine/__init__.py
 !/quarantine/quarantine_manager.py
-
-# Configuration et donnees locales
-/data/config.json
-/security/auth/
-/security/keys/
-/security/state.json
-/security/vault/
-/security/honeypots/
+/sandbox/analysis/

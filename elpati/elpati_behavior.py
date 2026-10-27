@@ -38,7 +38,7 @@ class ElpatiBehavior:
                 "details": details
             }
             self._events.append(event)
-            self._analyze_patterns(event)
+            return self._analyze_patterns(event)
 
     def _analyze_patterns(self, new_event):
         now = time.time()
@@ -105,7 +105,7 @@ class ElpatiBehavior:
 
             return {"pid": pid, "score": min(score, 100), "flags": flags,
                     "risk": "HIGH" if score > 60 else "MEDIUM" if score > 30 else "LOW"}
-        except psutil.NoSuchProcess:
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
             return {"pid": pid, "score": 0, "flags": ["Process terminated"], "risk": "NONE"}
 
     def get_risk_summary(self) -> dict:

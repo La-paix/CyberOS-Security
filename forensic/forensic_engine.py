@@ -1,10 +1,12 @@
 """
 FORENSIC ENGINE - Digital Forensics & Evidence Collection
-Generates court-admissible forensic reports with chain of custody
+Collects partial local observations and exports hashed evidence; no legal certification
 """
 import os, json, hashlib, platform, time, psutil
 from pathlib import Path
 from datetime import datetime
+from uuid import uuid4
+from utils.storage import atomic_write, safe_name
 
 FORENSIC_DIR = Path(__file__).parent.parent / "reports" / "forensic"
 FORENSIC_DIR.mkdir(parents=True, exist_ok=True)
@@ -178,19 +180,20 @@ class ForensicEngine:
             "chain_of_custody": {
                 "collected_at": datetime.utcnow().isoformat(),
                 "tool": "ELPATI Forensic Engine",
-                "integrity_method": "SHA256"
+                "integrity_method": "SHA256 of sorted JSON before report_hash is inserted",
+                "hash_scope": "canonical_json_without_chain_of_custody.report_hash"
             },
             "data": snapshot
         }
 
-        report_json = json.dumps(report, indent=2, default=str)
+        report_json = json.dumps(report, sort_keys=True, separators=(",", ":"), default=str)
         report_hash = hashlib.sha256(report_json.encode()).hexdigest()
         report["chain_of_custody"]["report_hash"] = report_hash
 
         # Save to file
-        report_file = FORENSIC_DIR / f"{incident_id}.json"
+        report_file = FORENSIC_DIR / f"{safe_name(incident_id)}_{uuid4().hex[:12]}.json"
         final_json = json.dumps(report, indent=2, default=str)
-        report_file.write_text(final_json)
+        atomic_write(report_file, final_json)
 
         # Store in vault
         self.vault.store_evidence(f"{incident_id}.json", final_json.encode())

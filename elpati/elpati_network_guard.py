@@ -13,6 +13,7 @@ class ElpatiNetworkGuard:
         self.log = ElpatiLog()
         self.ti = ElpatiThreatIntel()
         self._active = False
+        self._stop_event = threading.Event()
         self._blocked_ips = set()
         self._blocked_ports = {4444, 1337, 31337, 9999, 8888, 6666, 5555}  # Common C2 ports
         self._connection_history = deque(maxlen=2000)
@@ -21,8 +22,12 @@ class ElpatiNetworkGuard:
         self._lock = threading.Lock()
         self._alerts = deque(maxlen=500)
         self._thread = None
+        self._alert_callbacks = []
 
     def start(self):
+        if self._active:
+            return
+        self._stop_event.clear()
         self._active = True
         self._thread = threading.Thread(target=self._guard_loop, daemon=True, name="ELPATI-NetGuard")
         self._thread.start()
@@ -30,16 +35,20 @@ class ElpatiNetworkGuard:
 
     def stop(self):
         self._active = False
+        self._stop_event.set()
+        worker = getattr(self, "_thread", None) or getattr(self, "_monitor_thread", None)
+        if worker and worker is not threading.current_thread():
+            worker.join(timeout=2)
 
     def _guard_loop(self):
         while self._active:
             try:
                 self._analyze_connections()
                 self._check_dns_anomalies()
-                time.sleep(3)
+                self._stop_event.wait(3)
             except Exception as e:
                 self.log.error(f"NetGuard error: {e}")
-                time.sleep(5)
+                self._stop_event.wait(5)
 
     def _analyze_connections(self):
         try:
@@ -74,7 +83,7 @@ class ElpatiNetworkGuard:
         """Check for DNS-based data exfiltration patterns (long subdomains)."""
         try:
             # This would hook DNS in production; here we check /etc/hosts anomalies
-            hosts_file = "/etc/hosts"
+            hosts_file = (__import__("os").path.join(__import__("os").environ.get("SystemRoot", r"C:\Windows"), "System32", "drivers", "etc", "hosts") if __import__("os").name == "nt" else "/etc/hosts")
             if not hasattr(self, '_hosts_hash'):
                 import hashlib
                 try:
@@ -99,14 +108,30 @@ class ElpatiNetworkGuard:
         with self._lock:
             self._alerts.append(alert)
         self.log.threat(f"[NETGUARD-{severity}] {message} score={score}")
+        for callback in self._alert_callbacks:
+            callback(dict(alert))
 
-    def block_ip(self, ip: str):
-        self._blocked_ips.add(ip)
-        self.log.audit(f"NetGuard: IP blocked: {ip}")
+    def register_alert_callback(self, callback):
+        if callback not in self._alert_callbacks:
+            self._alert_callbacks.append(callback)
 
-    def unblock_ip(self, ip: str):
-        self._blocked_ips.discard(ip)
-        self.log.audit(f"NetGuard: IP unblocked: {ip}")
+    def block_ip(self, ip):
+        from elpati.elpati_shield import ElpatiShield
+        shield = ElpatiShield()
+        shield.set_protection_level("ACTIVE")
+        result = shield.block_network_ip(ip)
+        if result.get("action") == "blocked":
+            self._blocked_ips.add(ip)
+        return result
+
+    def unblock_ip(self, ip):
+        from elpati.elpati_shield import ElpatiShield
+        shield = ElpatiShield()
+        shield.set_protection_level("ACTIVE")
+        result = shield.block_network_ip(ip, unblock=True)
+        if result.get("action") == "unblocked":
+            self._blocked_ips.discard(ip)
+        return result
 
     def get_active_connections(self) -> list:
         try:

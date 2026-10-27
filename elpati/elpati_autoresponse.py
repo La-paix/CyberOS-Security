@@ -14,7 +14,7 @@ class ElpatiAutoResponse:
     def __init__(self):
         from elpati.elpati_log import ElpatiLog
         self.log = ElpatiLog()
-        self._enabled = True
+        self._enabled = False
         self._actions_taken = []
         self._playbooks = self._load_playbooks()
 
@@ -24,36 +24,35 @@ class ElpatiAutoResponse:
             {
                 "name":      "RANSOMWARE_RESPONSE",
                 "trigger":   {"type": "ransomware", "min_score": 70},
-                "actions":   ["stop_file_writes", "alert_critical", "isolate_network",
-                              "backup_documents", "generate_forensic"],
+                "actions":   ["alert_critical", "generate_forensic"],
                 "auto":      True,
-                "description": "Réponse automatique ransomware — isolation + sauvegarde"
+                "description": "Alerte ransomware et rapport local"
             },
             {
                 "name":      "MALWARE_QUARANTINE",
                 "trigger":   {"type": "known_malware", "min_score": 80},
-                "actions":   ["kill_process", "quarantine_file", "alert_high", "scan_related"],
+                "actions":   ["quarantine_file", "alert_high"],
                 "auto":      True,
                 "description": "Quarantaine automatique des malwares connus"
             },
             {
                 "name":      "SUSPICIOUS_NETWORK",
                 "trigger":   {"type": "suspicious_network", "min_score": 65},
-                "actions":   ["block_ip", "alert_medium", "capture_traffic_stats"],
+                "actions":   ["alert_medium"],
                 "auto":      True,
-                "description": "Blocage automatique IP suspecte"
+                "description": "Alerte IP suspecte"
             },
             {
                 "name":      "CREDENTIAL_ATTACK",
                 "trigger":   {"type": "brute_force", "min_score": 60},
-                "actions":   ["lockout_source", "alert_high", "notify_admin"],
+                "actions":   ["alert_high"],
                 "auto":      True,
                 "description": "Verrouillage suite à tentative de force brute"
             },
             {
                 "name":      "HIGH_RISK_ALERT",
                 "trigger":   {"min_score": 60},
-                "actions":   ["alert_medium", "increase_monitoring"],
+                "actions":   ["alert_medium"],
                 "auto":      True,
                 "description": "Alerte générique pour score élevé"
             },
@@ -105,17 +104,17 @@ class ElpatiAutoResponse:
             if action == "kill_process":
                 pid = alert.get("pid")
                 if pid and controller and "shield" in controller._modules:
-                    controller._modules["shield"].kill_process(pid)
-                    return f"Process {pid} terminé"
+                    result = controller._modules["shield"].kill_process(pid)
+                    return f"Action processus : {result}"
 
             elif action == "quarantine_file":
                 path = alert.get("path") or alert.get("file_path")
                 if path and controller and "quarantine" in controller._modules:
                     import os
                     if os.path.exists(path):
-                        controller._modules["quarantine"].quarantine_file(
+                        result = controller._modules["quarantine"].quarantine_file(
                             path, {"type": alert.get("type","?"), "score": alert.get("score",0)})
-                        return f"Fichier mis en quarantaine: {path}"
+                        return f"Quarantaine : {result}"
 
             elif action == "block_ip":
                 ip = alert.get("ip")
@@ -144,9 +143,9 @@ class ElpatiAutoResponse:
                     return "Rapport forensic lancé"
 
             elif action == "increase_monitoring":
-                return "Surveillance renforcée activée"
+                return "Action non prise en charge : surveillance renforcée"
 
-            return f"{action}: exécuté"
+            return f"{action}: non effectuée (action indisponible ou données manquantes)"
         except Exception as e:
             return f"{action}: erreur — {str(e)[:50]}"
 

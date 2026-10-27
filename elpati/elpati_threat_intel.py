@@ -3,11 +3,26 @@ ELPATI THREAT INTEL - Local Malware Signature Database
 100% offline threat intelligence with YARA-like rules
 """
 import os, json, hashlib, re
+from utils.storage import write_json
+import threading
+_CUSTOM_LOCK = threading.RLock()
 from pathlib import Path
 from datetime import datetime
 
 THREAT_DB_DIR = Path(__file__).parent.parent / "threat_db"
 THREAT_DB_DIR.mkdir(exist_ok=True)
+
+# These extensions are also routinely used by legitimate encrypted storage.
+# A filename alone must not turn a backup/password file into a malware verdict.
+AMBIGUOUS_ENCRYPTED_EXTENSIONS = frozenset({".enc", ".crypt", ".encrypted", ".vault"})
+FILE_REVIEW_PATTERNS = (
+    ("SHADOW_COPY_DELETION_COMMAND", 60,
+     re.compile(r"\b(?:vssadmin(?:\.exe)?[ \t]+delete[ \t]+shadows|wmic(?:\.exe)?[ \t]+shadowcopy[ \t]+delete)\b", re.I)),
+    ("ENCODED_POWERSHELL_COMMAND", 55,
+     re.compile(r"\bpowershell(?:\.exe)?[ \t]+[^\r\n]{0,180}?-(?:enc(?:odedcommand)?|e)[ \t]+[A-Za-z0-9+/=]{20,}", re.I)),
+    ("CREDENTIAL_DUMP_COMMAND", 65,
+     re.compile(r"\b(?:procdump(?:64)?(?:\.exe)?)[ \t]+[^\r\n]{0,180}?-ma[ \t]+lsass(?:\.exe)?\b|\bsekurlsa::(?:logonpasswords|tickets)\b", re.I)),
+)
 
 # Built-in threat signatures (MD5/SHA256 known malware hashes + patterns)
 BUILTIN_SIGNATURES = {
@@ -94,29 +109,33 @@ class ElpatiThreatIntel:
     def _load_db(self):
         if self.db_file.exists():
             try:
-                return json.loads(self.db_file.read_text())
+                return json.loads(self.db_file.read_text(encoding="utf-8"))
             except:
                 pass
         db = BUILTIN_SIGNATURES.copy()
         db["_version"] = "2026.1.0"
         db["_updated"] = datetime.utcnow().isoformat()
         db["_count"] = sum(len(v) if isinstance(v, list) else 1 for v in db.values())
-        self.db_file.write_text(json.dumps(db, indent=2))
+        self.db_file.write_text(json.dumps(db, indent=2), encoding="utf-8")
         return db
 
     def _load_custom(self):
-        if self.custom_db_file.exists():
-            try:
-                return json.loads(self.custom_db_file.read_text())
-            except:
-                pass
-        return {"hashes": [], "strings": [], "rules": []}
+        if not self.custom_db_file.exists():
+            return {"hashes": [], "strings": [], "rules": []}
+        value = json.loads(self.custom_db_file.read_text(encoding="utf-8"))
+        if not isinstance(value, dict) or any(not isinstance(value.get(k, []), list)
+                                               for k in ("hashes", "strings", "rules")):
+            raise ValueError("Base de signatures personnalisées corrompue")
+        return {"hashes": value.get("hashes", []), "strings": value.get("strings", []),
+                "rules": value.get("rules", [])}
 
     def check_hash(self, file_hash: str) -> dict:
         self.stats["scans"] += 1
-        fh = file_hash.lower()
+        fh = str(file_hash).lower()
         all_hashes = self._db.get("known_malware_hashes", []) + self._custom.get("hashes", [])
-        if fh in [h.lower() for h in all_hashes]:
+        normalized = {str(h.get("hash", "") if isinstance(h, dict) else h).lower()
+                      for h in all_hashes}
+        if fh and fh in normalized:
             self.stats["detections"] += 1
             return {"detected": True, "type": "known_malware", "score": 100, "hash": fh}
         return {"detected": False, "score": 0}
@@ -124,10 +143,10 @@ class ElpatiThreatIntel:
     def scan_strings(self, content: str) -> list:
         findings = []
         content_lower = content.lower()
-        for s in self._db.get("suspicious_strings", []):
+        for s in self._db.get("suspicious_strings", []) + self._custom.get("strings", []):
             if s.lower() in content_lower:
                 findings.append({"type": "suspicious_string", "match": s, "score": 60})
-        for rule in self._db.get("yara_like_rules", []):
+        for rule in self._db.get("yara_like_rules", []) + self._custom.get("rules", []):
             try:
                 if re.search(rule["pattern"], content, re.IGNORECASE | re.DOTALL):
                     findings.append({
@@ -142,15 +161,66 @@ class ElpatiThreatIntel:
 
     def check_extension(self, filename: str) -> dict:
         ext = Path(filename).suffix.lower()
+        if ext in AMBIGUOUS_ENCRYPTED_EXTENSIONS:
+            return {"detected": False, "score": 0, "ambiguous": True, "ext": ext}
         ransom_exts = self._db.get("ransomware_extensions", [])
         if ext in ransom_exts:
-            return {"detected": True, "type": "ransomware_extension", "score": 85, "ext": ext}
+            return {"detected": True, "type": "extension_indicator", "score": 45,
+                    "confirmed": False, "ext": ext}
         return {"detected": False, "score": 0}
 
+    def file_review_patterns(self, content: str, extension: str) -> list:
+        """Static command indicators, never proof that a command ran.
+
+        Imported Windows API names and standalone credential-related words
+        are deliberately not file verdicts. Python rule dictionaries and
+        documentation strings are not interpreted as executed shell commands.
+        """
+        if extension == ".py":
+            import ast
+            commands = []
+            try:
+                tree = ast.parse(content)
+            except (SyntaxError, ValueError, RecursionError):
+                tree = None
+            if tree is not None:
+                for node in ast.walk(tree):
+                    if not isinstance(node, ast.Call) or not node.args:
+                        continue
+                    func = node.func
+                    if not (isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)):
+                        continue
+                    name = func.value.id + "." + func.attr
+                    if name not in {"subprocess.run", "subprocess.Popen", "subprocess.call",
+                                    "subprocess.check_call", "subprocess.check_output", "os.system", "os.popen"}:
+                        continue
+                    try:
+                        value = ast.literal_eval(node.args[0])
+                    except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+                        continue
+                    if isinstance(value, str):
+                        commands.append(value)
+                    elif isinstance(value, (list, tuple)) and all(isinstance(v, str) for v in value):
+                        commands.append(" ".join(value))
+            command_text = "\n".join(commands)
+        else:
+            command_text = "\n".join(line for line in content.splitlines()
+                                     if not line.lstrip().lower().startswith(("#", "rem ", "::")))
+        findings = [{"name": name, "score": score, "confirmed": False}
+                    for name, score, pattern in FILE_REVIEW_PATTERNS if pattern.search(command_text)]
+        # Owner-supplied rules remain review indicators, even when their score is high.
+        for rule in self._custom.get("rules", []):
+            try:
+                if re.search(rule["pattern"], content, re.IGNORECASE):
+                    findings.append({"name": str(rule["name"]), "score": 60, "confirmed": False})
+            except (KeyError, TypeError, re.error):
+                continue
+        return findings
+
     def check_process_name(self, proc_name: str) -> dict:
-        pn = proc_name.lower()
+        pn = (proc_name or "").lower()
         malicious = [p.lower() for p in self._db.get("malicious_processes", [])]
-        if pn in malicious or any(pn in m for m in malicious):
+        if pn and pn in malicious:
             return {"detected": True, "type": "malicious_process", "score": 95, "process": proc_name}
         return {"detected": False, "score": 0}
 
@@ -161,8 +231,15 @@ class ElpatiThreatIntel:
         return {"detected": False, "score": 0}
 
     def add_custom_hash(self, file_hash: str, description: str = ""):
-        self._custom["hashes"].append({"hash": file_hash, "desc": description})
-        self.custom_db_file.write_text(json.dumps(self._custom, indent=2))
+        file_hash = file_hash.lower().strip()
+        if len(file_hash) not in (32, 64) or not re.fullmatch(r"[0-9a-f]+", file_hash):
+            raise ValueError("Empreinte MD5, SHA-256 ou SHA3-256 requise")
+        with _CUSTOM_LOCK:
+            self._custom = self._load_custom()
+            if not any((h.get("hash") if isinstance(h, dict) else h) == file_hash
+                       for h in self._custom["hashes"]):
+                self._custom["hashes"].append({"hash": file_hash, "desc": description})
+            write_json(self.custom_db_file, self._custom)
 
     def get_stats(self):
         return {**self.stats, "db_version": self._db.get("_version", "unknown"),

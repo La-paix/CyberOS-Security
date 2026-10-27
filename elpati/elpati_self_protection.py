@@ -9,6 +9,7 @@ class ElpatiSelfProtection:
     def __init__(self):
         self.root = Path(__file__).parent.parent
         self._active = False
+        self._stop_event = threading.Event()
         self._monitor_thread = None
         self._file_hashes = {}
         self._critical_files = [
@@ -18,6 +19,9 @@ class ElpatiSelfProtection:
         ]
 
     def activate(self):
+        if self._active:
+            return
+        self._stop_event.clear()
         self._active = True
         self._snapshot_files()
         self._install_signal_handlers()
@@ -59,11 +63,15 @@ class ElpatiSelfProtection:
 
     def _monitor_loop(self):
         while self._active:
-            time.sleep(30)
+            self._stop_event.wait(30)
             self._check_integrity()
 
     def deactivate(self):
         self._active = False
+        self._stop_event.set()
+        worker = getattr(self, "_thread", None) or getattr(self, "_monitor_thread", None)
+        if worker and worker is not threading.current_thread():
+            worker.join(timeout=2)
 
     def get_status(self):
         return {"active": self._active, "files_monitored": len(self._file_hashes),

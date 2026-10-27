@@ -1,150 +1,96 @@
-# CyberOS Security
+# CyberOS Security — ELPATI 2026.2.1
 
-**v2026.2 · Système ELPATI**
+Application Python de sécurité locale avec interface Tkinter et CLI. Cette version corrige le commit public 429b6d6 et fournit une suite de tests reproductible.
 
-Application Python de sécurité locale avec interface graphique Tkinter, mode CLI, modules d’analyse et assistant Elpati. L’analyse locale repose sur des signatures, des heuristiques et la corrélation de scores. Une intégration Anthropic Claude est optionnelle.
+**Révision du scanner : 27 octobre 2026.** Corrige les faux positifs et les exports trop volumineux observés lors d'un essai Windows. Validation : 149 tests réussis sous Linux et 149 sur le PC Windows de l'utilisateur, sans test ignoré. Voir les résultats et leur portée dans docs/VALIDATION.md.
 
-[Guide utilisateur](docs/GUIDE_COMPLET.md) · [Guide développeur](docs/GUIDE_DEVELOPPEUR_COMPLET.md) · [Signaler un problème](https://github.com/La-paix/CyberOS-Security/issues)
+Le logiciel relève des indicateurs avec une petite base de signatures et des heuristiques. Il ne constitue pas un antivirus certifié, un EDR d'entreprise complet ou une garantie d'absence de menace. Conservez votre antivirus habituel, vos mises à jour et vos sauvegardes.
 
-## Modules du projet
+## Démarrage
 
-| Domaine | Sources principales |
-| --- | --- |
-| Scans de fichiers et orchestration | `core/engine.py`, `core/controller.py`, `scanner/` |
-| Surveillance et analyse comportementale | `elpati/elpati_monitor.py`, `elpati/elpati_behavior.py` |
-| Analyse mémoire et réseau | `elpati/elpati_memory_scan.py`, `elpati/elpati_network_guard.py` |
-| Ransomware et réponse aux alertes | `elpati/elpati_ransom_guard.py`, `elpati/elpati_shield.py`, `elpati/elpati_autoresponse.py` |
-| Analyse statique et collecte forensique | `sandbox/malware_lab.py`, `forensic/forensic_engine.py` |
-| Intégrité, planification et analyse de vulnérabilités | `elpati/elpati_integrity.py`, `elpati/elpati_scheduler.py`, `elpati/elpati_vulnscan.py` |
-| Analyse locale et intégration Claude | `core/ai_core.py`, `elpati/elpati_ai_analyzer.py` |
-| Interface et préférences | `gui/dashboard.py`, `core/config.py`, `data/i18n.json` |
+Python 3.10+ avec Tkinter. La validation locale de cette livraison utilise Python 3.12 sous Linux. Guide : [INSTALLATION_WINDOWS.md](docs/INSTALLATION_WINDOWS.md).
 
-Ce tableau décrit les composants présents dans le code. Il ne constitue pas une certification de détection ou de protection.
+~~~powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-tested.txt
+.\.venv\Scripts\python.exe main.py --check
+.\.venv\Scripts\python.exe main.py
+~~~
 
-## Prérequis
+Au premier lancement, créez votre mot de passe d'au moins 12 caractères. Il n'existe pas de mot de passe par défaut sur une installation neuve.
 
-Les exemples suivants ciblent **Windows et PowerShell**.
+Pour la CLI : ajouter --cli à la commande de lancement. Sous Linux, créer l'environnement avec python3 -m venv .venv puis utiliser .venv/bin/python. Tkinter peut nécessiter le paquet système python3-tk.
 
-- Git pour cloner le dépôt.
-- Python avec le lanceur Windows `py`. Les guides indiquent Python 3.9 ou supérieur ; la compatibilité de chaque version dépend aussi des dépendances installées.
-- Tkinter pour l’interface graphique.
-- Les dépendances de `requirements.txt` : `psutil>=5.9.0`, `cryptography>=41.0.0` et `reportlab>=4.0.0`.
+## Fonctions disponibles
 
-**ReportLab est obligatoire au démarrage dans cette version** : `main.py` vérifie sa présence, même avant la génération d’un rapport.
+- Scans MD5, SHA-256 et SHA3-256, signatures personnalisées, extensions et heuristiques. Les fichiers de plus de 100 Mio, liens symboliques et données internes sont exclus. Les erreurs et exclusions sont comptabilisées.
+- Scan rapide limité à deux niveaux de sous-dossiers ; scan complet récursif sur le dossier choisi. Cette limitation ne s'applique pas au scan complet.
+- Progression, annulation, erreurs visibles et distinction entre correspondances de signatures et indices non confirmés. Les noms d'API ordinaires et l'extension .enc ne suffisent pas à signaler un fichier.
+- PDF synthétique du dernier scan et JSON joint contenant les données détaillées. L'interface et le PDF affichent un aperçu borné, sans supprimer les résultats du JSON.
+- Quarantaine chiffrée à identifiants uniques, restauration sans écrasement et suppression explicite.
+- Inventaire des processus, connexions et métadonnées mémoire ; certaines régions mémoire Linux sont lues si les permissions le permettent.
+- Surveillance périodique des processus, connexions et fichiers leurres. Ces observations ne filtrent pas toutes les opérations du système.
+- Quelques contrôles de configuration et ports locaux ; aucune détection exhaustive des CVE installées.
+- Surveillance d'intégrité des fichiers et planification quotidienne/jours ouvrés/fins de semaine/jour nommé.
+- Analyses URL avec DNS, TLS, redirections, contenu, en-têtes et heuristiques. Les contrôles incomplets sont signalés.
+- Rapports forensic JSON, preuves chiffrées, PDF général, scan ou URL.
+- Assistant local et intégration Anthropic facultative.
+- Thèmes, tailles de police et traductions de l'interface ; certaines descriptions restent en français.
 
-## Installation
+Le module nommé « sandbox » réalise une **analyse statique** : il ne lance pas le fichier et n'émule pas son comportement. Les rapports n'ont aucune certification judiciaire ou externe. SIEM, gestion multi-postes, mises à jour automatiques et authentification vocale ne sont pas implémentés.
 
-### 1. Cloner le dépôt
+## Tests
 
-```powershell
-git clone https://github.com/La-paix/CyberOS-Security.git
-Set-Location CyberOS-Security
-```
+Les tests travaillent dans une copie temporaire des sources et ne réinitialisent pas votre installation.
 
-Depuis un dossier source déjà présent, utilisez directement ce dossier.
+La suite actuelle comprend 106 contrôles du cœur et 43 contrôles GUI. Ils ne mesurent pas l'efficacité contre l'ensemble des logiciels malveillants existants.
 
-### 2. Vérifier le gestionnaire de quarantaine
+~~~powershell
+.\.venv\Scripts\python.exe tests/run_tests.py
+.\.venv\Scripts\python.exe tests/run_tests.py --gui
+~~~
 
-Le contrôleur importe `quarantine.quarantine_manager`. Le fichier source suivant doit donc être présent avant l’initialisation complète des modules :
+Le second appel exige un affichage Tkinter réel ou virtuel. Sous Linux sans bureau : xvfb-run -a .venv/bin/python tests/run_tests.py --gui.
 
-```powershell
-if (!(Test-Path -LiteralPath ".\quarantine\quarantine_manager.py")) {
-    throw "Le fichier quarantine/quarantine_manager.py doit etre restaure depuis le dossier source du projet."
-}
-```
+La suite crée temporairement le fichier de test inoffensif EICAR. Si l'antivirus Windows l'intercepte, ce test peut être explicitement ignoré : ne désactivez pas l'antivirus. Les actions de pare-feu/processus sont testées avec des substituts contrôlés, sans modifier le système hôte.
 
-Le `.gitignore` autorise les fichiers source `quarantine/__init__.py` et `quarantine/quarantine_manager.py`. Les données mises en quarantaine restent exclues du dépôt.
+Voir [VALIDATION.md](docs/VALIDATION.md). Le workflow GitHub fourni préparera les tests Windows/Linux après publication ; sa présence ne signifie pas qu'ils ont déjà été exécutés.
 
-### 3. Installer les dépendances dans un environnement virtuel
+## Ancienne installation
 
-```powershell
-py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
+**Gardez votre dossier actuel intact.** Décompressez dans un nouveau dossier et lisez le guide Windows avant de réutiliser vos données.
 
-Ces commandes utilisent directement Python dans `.venv` ; l’activation d’un script PowerShell n’est pas nécessaire.
+Une ancienne installation contenant master.salt doit lancer explicitement :
 
-Les paquets `pyaudio` et `yara-python` sont mentionnés comme optionnels dans `requirements.txt` et ne sont pas installés par défaut.
+~~~powershell
+.\.venv\Scripts\python.exe tools/migrate_legacy.py
+~~~
 
-## Lancement
+La migration authentifie les fichiers avant modification, conserve une sauvegarde privée et remplace le secret fixe par une clé aléatoire d'installation. Elle refuse un fichier chiffré endommagé.
 
-### Interface graphique
+Sauvegardez ensemble security/keys, security/auth, security/vault et quarantine/vault. Perdre la clé empêche de déchiffrer les données. La clé est un fichier privé local : protégez les permissions du dossier et votre compte Windows. Une personne maîtrisant votre compte ou disposant de droits administrateur peut accéder aux secrets.
 
-```powershell
-.\.venv\Scripts\python.exe .\main.py
-```
+## API facultative
 
-### Ligne de commande
+Aucun compte ni clé API n'est nécessaire aux outils locaux. Copier config.env.example vers config.env, renseigner votre clé et un modèle disponible sur votre compte Anthropic, puis activer AI_REMOTE_ENABLED=true.
 
-```powershell
-.\.venv\Scripts\python.exe .\main.py --cli
-```
+Les appels peuvent être facturés et transmettre des indicateurs/conversations au fournisseur. Aucun appel payant de validation n'est fait au démarrage. Une panne distante déclenche le repli local. Ne publiez jamais config.env. L'API payante n'a pas été appelée pendant ces tests.
 
-Le drapeau `--no-gui` est également reconnu par `main.py`. Si le lancement graphique échoue, le point d’entrée tente de passer en mode CLI.
+## Licences
 
-### Première connexion
+Les outils manuels sont accessibles en FREE. Des licences PRO/ENTERPRISE signées peuvent activer la surveillance avancée en arrière-plan. Ces niveaux ne certifient pas les capacités de protection.
 
-Lors de l’initialisation d’une nouvelle installation, le code crée un mot de passe par défaut : **`cyberos2026`**.
+La clé privée d'émission appartient au propriétaire et reste hors du dépôt. Voir [LICENCES_VENDEUR.md](docs/LICENCES_VENDEUR.md). Les anciennes licences doivent être réémises ; réactiver une licence v2 ne repousse pas son échéance.
 
-Changez-le dès la première connexion dans **Paramètres → Sécurité**. Une installation existante conserve ses propres fichiers d’authentification.
+La protection de licence d'un programme distribué en source reste modifiable par son destinataire. Elle ne remplace pas un contrat et ne garantit aucun paiement.
 
-Les réponses automatiques peuvent interrompre des processus ou déplacer des fichiers. Vérifiez les réglages de protection et de quarantaine avant leur activation.
+## Documentation et intégrité
 
-## Configuration et données locales
-
-`core/config.py` fournit les préférences par défaut lorsque `data/config.json` n’existe pas. Les préférences sont sauvegardées lors de leur modification.
-
-L’application crée les répertoires nécessaires et initialise ses fichiers cryptographiques et d’authentification. Conservez les fichiers d’une installation existante pour préserver son état local.
-
-| Chemin | Usage |
-| --- | --- |
-| `config.env` | Configuration optionnelle de l’API Claude. |
-| `data/config.json` | Préférences locales. |
-| `security/auth/` | Données d’authentification. |
-| `security/keys/` | Fichiers cryptographiques propres à l’installation. |
-| `security/state.json` | État et compteurs locaux. |
-| `security/vault/` | Éléments de preuve stockés localement. |
-| `logs/`, `reports/` | Journaux et rapports produits par l’application. |
-| `quarantine/vault/` | Données mises en quarantaine. |
-
-Ces fichiers et répertoires locaux sont exclus du suivi Git. Le fichier `config.env.example` peut être versionné car il ne contient aucune clé.
-
-## Claude : optionnel
-
-Sans clé API, `AICore` utilise son analyse heuristique locale. Pour configurer Claude lors d’une nouvelle installation, créez le fichier local si nécessaire :
-
-```powershell
-if (!(Test-Path -LiteralPath ".\config.env")) {
-    Copy-Item -LiteralPath ".\config.env.example" -Destination ".\config.env"
-}
-notepad .\config.env
-```
-
-Renseignez votre propre clé après le signe `=` de `ANTHROPIC_API_KEY`. La variable d’environnement système du même nom est prioritaire sur le fichier.
-
-Relancez l’application après modification. Le mode Claude dépend de la clé, du réseau et du modèle configuré dans `core/ai_core.py`. En cas d’échec de l’appel Claude, le code prévoit un retour à l’analyse locale.
-
-**L’activation de Claude transmet un contexte d’analyse à l’API Anthropic.** Gardez `config.env` hors du dépôt.
-
-## Points à connaître
-
-- Le gestionnaire `quarantine/quarantine_manager.py` doit être versionné pour permettre l’initialisation complète des modules.
-- Le menu CLI affiche davantage d’entrées que celles actuellement traitées par `run_cli()`. Le code gère notamment le scan rapide et la génération/activation de licences.
-- Les guides incluent des descriptions et des propositions commerciales qui ne remplacent pas une validation des fonctions sur le système utilisé.
-- Les options dépendant des permissions et du système d’exploitation doivent être vérifiées dans l’environnement cible.
-
-## Documentation et support
-
-- [Guide complet](docs/GUIDE_COMPLET.md)
+- [Guide utilisateur](docs/GUIDE_COMPLET.md)
 - [Guide développeur](docs/GUIDE_DEVELOPPEUR_COMPLET.md)
-- [Issues GitHub](https://github.com/La-paix/CyberOS-Security/issues)
+- [Corrections](CHANGELOG.md)
+- [Installation et publication GitHub](docs/INSTALLATION_WINDOWS.md)
 
-Pour signaler une erreur, indiquez le système utilisé, la version de Python, la commande exécutée et le message obtenu. Retirez les clés et les identifiants des journaux avant de les partager.
+Le manifeste vérifie la liste des sources avec des chemins portables. Il s'agit d'un contrôle de cohérence local, **pas d'une signature d'éditeur**. Après une modification volontaire revue, le mainteneur peut lancer python tools/build_manifest.py, puis les tests. Ne reconstruisez pas le manifeste pour simplement masquer une alerte.
 
-## Licence du code source
-
-Le projet comprend un mécanisme de licences applicatives. Aucun fichier `LICENSE` n’est présent dans l’import initial du dépôt ; les conditions de distribution du code restent à préciser par le mainteneur.
-
-## Mainteneur
-
-[La-paix](https://github.com/La-paix)
+Les conditions de distribution/vente doivent être fixées par le propriétaire, après vérification des droits sur les sources et dépendances.

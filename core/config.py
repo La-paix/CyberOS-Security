@@ -117,7 +117,7 @@ DEFAULT_CONFIG = {
     "language": "fr",
     "api_key": "",
     "ai_enabled": False,
-    "auto_protect": True,
+    "auto_protect": False,
     "auto_quarantine": False,
     "threat_score_kill": 80,
     "threat_score_isolate": 60,
@@ -125,7 +125,7 @@ DEFAULT_CONFIG = {
     "scan_on_startup": False,
     "show_notifications": True,
     "log_level": "INFO",
-    "version": "2026.2.0",
+    "version": "2026.2.1",
 }
 
 class Config:
@@ -150,7 +150,7 @@ class Config:
         CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
         if CONFIG_FILE.exists():
             try:
-                saved = json.loads(CONFIG_FILE.read_text())
+                saved = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
                 self._data.update(saved)
             except:
                 pass
@@ -158,7 +158,7 @@ class Config:
     def _load_i18n(self):
         if I18N_FILE.exists():
             try:
-                self._i18n = json.loads(I18N_FILE.read_text())
+                self._i18n = json.loads(I18N_FILE.read_text(encoding="utf-8"))
             except:
                 pass
 
@@ -166,7 +166,8 @@ class Config:
         safe = dict(self._data)
         # Don't save API key in plain text - it's stored encrypted
         safe["api_key"] = ""
-        CONFIG_FILE.write_text(json.dumps(safe, indent=2))
+        from utils.storage import write_json
+        write_json(CONFIG_FILE, safe)
 
     def get(self, key, default=None):
         return self._data.get(key, default)

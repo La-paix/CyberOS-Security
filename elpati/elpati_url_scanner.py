@@ -1,3 +1,5 @@
+import copy
+import ipaddress
 """
 ELPATI URL SCANNER - Analyse de sites web style VirusTotal
 100% local + IA hybride (locale ou Claude)
@@ -73,6 +75,7 @@ class ElpatiURLScanner:
         if cache_key in self._cache:
             cached = self._cache[cache_key]
             if time.time() - cached["_cached_at"] < self._cache_ttl:
+                cached = copy.deepcopy(cached)
                 cached["from_cache"] = True
                 return cached
 
@@ -98,7 +101,10 @@ class ElpatiURLScanner:
 
         checks["blacklist"]      = self._check_blacklist(url, domain)
         checks["domain_age"]     = self._check_domain_patterns(domain)
-        checks["ssl"]            = self._check_ssl(domain)
+        parsed = urllib.parse.urlsplit(url)
+        checks["ssl"] = (self._check_ssl(domain, parsed.port or 443) if parsed.scheme == "https" else
+                         {"has_ssl": False, "valid": False, "score": 15,
+                          "findings": ["URL HTTP sans chiffrement"], "cert_info": {}})
         checks["dns"]            = self._check_dns(domain)
         checks["redirects"]      = self._check_redirects(url)
         checks["content"]        = self._check_content(url)
@@ -116,6 +122,13 @@ class ElpatiURLScanner:
         report["verdict"], report["verdict_color"] = self._score_to_verdict(score)
         report["scan_duration_ms"] = int((time.time() - start) * 1000)
 
+        if not checks["dns"].get("resolved") or not checks["content"].get("reachable"):
+            report["incomplete"] = True
+            if score < 60:
+                report["verdict"], report["verdict_color"] = "INCONCLUSIF — contrôles réseau incomplets", "warning"
+        else:
+            report["incomplete"] = False
+
         # Analyse IA
         if use_ai:
             report["ai_analysis"] = self._ai_analyze(report)
@@ -130,7 +143,7 @@ class ElpatiURLScanner:
 
         # Cache
         report["_cached_at"] = time.time()
-        self._cache[cache_key] = report
+        self._cache[cache_key] = copy.deepcopy(report)
 
         self.log.audit(f"URL Scanner: {url} → {report['verdict']} (score={score})")
         return report
@@ -235,7 +248,7 @@ class ElpatiURLScanner:
             result["passed"] = False
         return result
 
-    def _check_ssl(self, domain: str) -> dict:
+    def _check_ssl(self, domain: str, port=443) -> dict:
         """Vérifie le certificat SSL."""
         result = {
             "has_ssl": False, "valid": False, "score": 0,
@@ -244,7 +257,7 @@ class ElpatiURLScanner:
         try:
             ctx = ssl.create_default_context()
             with ctx.wrap_socket(
-                socket.create_connection((domain, 443), timeout=5),
+                socket.create_connection((domain, port), timeout=5),
                 server_hostname=domain
             ) as sock:
                 cert = sock.getpeercert()
@@ -294,7 +307,7 @@ class ElpatiURLScanner:
 
             # IPs privées dans un domaine public (suspect)
             for ip in unique_ips:
-                if ip.startswith(("192.168.", "10.", "172.16.", "127.")):
+                if ipaddress.ip_address(ip).is_private:
                     result["score"] += 30
                     result["findings"].append(f"Résolution vers IP privée: {ip}")
 
@@ -306,59 +319,47 @@ class ElpatiURLScanner:
             result["findings"].append(f"DNS: {str(e)[:60]}")
         return result
 
-    def _check_redirects(self, url: str) -> dict:
-        """Suit les redirections et détecte les chaînes suspectes."""
+    def _check_redirects(self, url):
         result = {"redirect_count": 0, "chain": [], "score": 0, "findings": []}
-        try:
-            current_url = url
-            visited = []
-            for _ in range(10):
-                visited.append(current_url)
-                req = urllib.request.Request(
-                    current_url,
-                    headers={"User-Agent": "Mozilla/5.0 CyberOS-Scanner/2026"},
-                    method="HEAD"
-                )
-                opener = urllib.request.build_opener(
-                    urllib.request.HTTPRedirectHandler()
-                )
-                try:
-                    with opener.open(req, timeout=5) as resp:
-                        final = resp.geturl()
-                        if final != current_url:
-                            visited.append(final)
-                        break
-                except urllib.error.HTTPError as e:
-                    if e.code in (301, 302, 303, 307, 308):
-                        loc = e.headers.get("Location", "")
-                        if loc:
-                            visited.append(loc)
-                            current_url = loc
-                        else:
-                            break
-                    else:
-                        break
-                except:
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                return None
+        opener = urllib.request.build_opener(NoRedirect())
+        current = url
+        for _ in range(10):
+            if current in result["chain"]:
+                result["score"] = max(25, result["score"])
+                result["findings"].append("Boucle de redirection")
+                break
+            result["chain"].append(current)
+            try:
+                req = urllib.request.Request(current, method="HEAD",
+                    headers={"User-Agent": "CyberOS-Scanner/2026.2.1"})
+                with opener.open(req, timeout=5):
                     break
-
-            result["chain"] = visited
-            result["redirect_count"] = len(visited) - 1
-
-            if len(visited) > 4:
-                result["score"] += 25
-                result["findings"].append(f"Chaîne de redirections longue: {len(visited)-1} sauts")
-
-            # Redirection vers domaine différent
-            if len(visited) >= 2:
-                orig_d = self._extract_domain(visited[0])
-                final_d = self._extract_domain(visited[-1])
-                if orig_d != final_d:
-                    result["findings"].append(f"Redirection: {orig_d} → {final_d}")
-                    if final_d in MALICIOUS_DOMAINS:
-                        result["score"] += 80
-                        result["findings"].append(f"Redirection vers domaine malveillant!")
-        except Exception as e:
-            result["findings"].append(f"Analyse redirections: {str(e)[:60]}")
+            except urllib.error.HTTPError as exc:
+                if exc.code not in (301, 302, 303, 307, 308):
+                    result["findings"].append(f"HTTP {exc.code}")
+                    break
+                location = exc.headers.get("Location")
+                if not location:
+                    break
+                target = self._normalize_url(urllib.parse.urljoin(current, location))
+                if not target:
+                    result["score"] = 80
+                    result["findings"].append("Destination de redirection invalide")
+                    break
+                if self._extract_domain(target) in MALICIOUS_DOMAINS:
+                    result["score"] = 100
+                    result["findings"].append("Redirection vers la liste noire locale")
+                current = target
+            except Exception as exc:
+                result["error"] = str(exc)[:100]
+                break
+        result["redirect_count"] = max(0, len(result["chain"]) - 1)
+        if result["redirect_count"] >= 4:
+            result["score"] = max(result["score"], 25)
+            result["findings"].append("Chaîne de redirections longue")
         return result
 
     def _check_content(self, url: str) -> dict:
@@ -577,16 +578,18 @@ class ElpatiURLScanner:
                     if s > 20 and finding not in flags:
                         flags.append(finding)
 
-        # Bonus : domaine safe connu = force score à 0
-        if domain in SAFE_DOMAINS or any(domain.endswith("." + d) for d in SAFE_DOMAINS):
-            return 0, ["Domaine vérifié et fiable"]
-
-        final = min(int(total / sum(weights.values())), 100)
+        # Known malicious indicators must never be diluted by unrelated clean checks.
+        blacklist = checks.get("blacklist", {}).get("score", 0)
+        if blacklist >= 90:
+            return 100, checks["blacklist"].get("findings", [])[:10]
+        final = min(max(int(total / sum(weights.values())), int(blacklist)), 100)
+        if checks.get("content", {}).get("score", 0) >= 50:
+            final = max(final, 60)
         return final, flags[:10]
 
     def _score_to_verdict(self, score: int) -> tuple:
-        if score == 0:   return "✅ SÛR",          "success"
-        if score <= 20:  return "🟢 PROBABLEMENT SÛR", "success"
+        if score == 0:   return "AUCUN INDICATEUR RELEVE",          "success"
+        if score <= 20:  return "RISQUE INDICATIF FAIBLE", "success"
         if score <= 40:  return "🟡 À SURVEILLER",  "warning"
         if score <= 60:  return "🟠 SUSPECT",        "warning"
         if score <= 80:  return "🔴 DANGEREUX",      "danger"
@@ -629,23 +632,36 @@ class ElpatiURLScanner:
     #  UTILITAIRES
     # ════════════════════════════════════════════════════════════════════
 
-    def _normalize_url(self, url: str) -> str:
-        url = url.strip()
-        if not url:
+    def _normalize_url(self, url):
+        url = str(url).strip()
+        if not url or any(ord(c) < 32 or c.isspace() for c in url):
             return ""
-        if not url.startswith(("http://", "https://")):
+        if "://" not in url:
+            if ":" in url and not url.rsplit(":", 1)[-1].split("/", 1)[0].isdigit():
+                return ""
             url = "https://" + url
-        return url
-
-    def _extract_domain(self, url: str) -> str:
         try:
-            parsed = urllib.parse.urlparse(url)
-            domain = parsed.netloc or parsed.path
-            domain = domain.split(":")[0]  # Enlever le port
-            domain = domain.replace("www.", "")
-            return domain.lower()
-        except:
-            return url
+            parts = urllib.parse.urlsplit(url)
+            if parts.scheme not in {"http", "https"} or not parts.hostname or parts.username or parts.password:
+                return ""
+            if parts.port is not None and not 1 <= parts.port <= 65535:
+                return ""
+            host = parts.hostname.encode("idna").decode("ascii")
+            if ":" in host:
+                host = "[" + host + "]"
+            if parts.port:
+                host += ":" + str(parts.port)
+            return urllib.parse.urlunsplit((parts.scheme, host, parts.path or "/", parts.query, ""))
+        except (ValueError, UnicodeError):
+            return ""
+
+    def _extract_domain(self, url):
+        try:
+            host = urllib.parse.urlsplit(url).hostname or ""
+            host = host.lower().rstrip(".")
+            return host[4:] if host.startswith("www.") else host
+        except ValueError:
+            return ""
 
     def _build_details(self, checks: dict, domain: str, url: str) -> dict:
         """Construit le dictionnaire de détails pour l'affichage."""

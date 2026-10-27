@@ -5,6 +5,8 @@ Features: Multi-theme, Multi-language, Font size, Password change, API key, Lice
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, scrolledtext
 import threading, time, json, os
+import queue
+import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -18,6 +20,11 @@ class CyberOSApp:
         self._T = self.cfg.theme()
         self._F = self.cfg.fonts()
         self._controller = None
+        self._closed = False
+        self._page_generation = 0
+        self._ui_queue = queue.Queue()
+        self._job_local = threading.local()
+        self._clock_started = False
         self._scan_running = False
         self._scan_stop_requested = False
         self._last_scan_result = None
@@ -32,6 +39,9 @@ class CyberOSApp:
         self.root.minsize(1024, 720)
         self.root.configure(bg=self._T["bg_dark"])
         self.root.resizable(True, True)
+        self.root.protocol("WM_DELETE_WINDOW", self._close)
+        self.root.report_callback_exception = self._callback_error
+        self.root.after(30, self._drain_ui)
         self._setup_styles()
         self._build_login()
 
@@ -116,6 +126,8 @@ class CyberOSApp:
     #  LOGIN
     # ═══════════════════════════════════════════════════════════════════
     def _build_login(self):
+        from elpati.elpati_auth_voice import ElpatiAuthVoice
+        self._auth = ElpatiAuthVoice()
         self._clear_root()
         T, F = self._T, self._F
         wrap = self._frame(self.root, "bg_dark")
@@ -127,10 +139,10 @@ class CyberOSApp:
         tk.Label(wrap, text="CyberOS_Security",
                  font=("Consolas", F["title"], "bold"),
                  bg=T["bg_dark"], fg=T["text"]).pack()
-        tk.Label(wrap, text="ELPATI System v2026.2",
+        tk.Label(wrap, text="ELPATI System v2026.2.1",
                  font=("Consolas", F["body"]),
                  bg=T["bg_dark"], fg=T["accent"]).pack(pady=2)
-        tk.Label(wrap, text="Advanced EDR / XDR Platform",
+        tk.Label(wrap, text="Outils locaux de sécurité — version de validation",
                  font=("Consolas", F["body"]),
                  bg=T["bg_dark"], fg=T["text_muted"]).pack(pady=(0,25))
 
@@ -149,6 +161,12 @@ class CyberOSApp:
         e.pack(pady=4)
         e.focus(); e.bind("<Return>", lambda _: self._do_login())
 
+        self._pw_confirm = tk.StringVar()
+        if self._auth.needs_setup:
+            tk.Label(card, text="Créer votre mot de passe (12 caractères minimum)",
+                     bg=T["bg_light"], fg=T["text"]).pack(pady=4)
+            self._entry(card, self._pw_confirm, show="●", width=28).pack(pady=4)
+            tk.Label(card, text="Répéter le mot de passe", bg=T["bg_light"], fg=T["text_sub"]).pack()
         self._login_msg = tk.Label(card, text="",
                                    font=("Consolas", F["body"]),
                                    bg=T["bg_light"], fg=T["danger"])
@@ -156,7 +174,7 @@ class CyberOSApp:
 
         self._btn(card, self.cfg.t("login_btn"), self._do_login,
                   padx=25, pady=10).pack(pady=10)
-        tk.Label(card, text=self.cfg.t("login_default"),
+        tk.Label(card, text="Première connexion : créer un mot de passe" if self._auth.needs_setup else "",
                  font=("Consolas", F["body"]),
                  bg=T["bg_light"], fg=T["text_muted"]).pack()
 
@@ -179,14 +197,18 @@ class CyberOSApp:
         self._build_login()
 
     def _do_login(self):
-        from elpati.elpati_auth_voice import ElpatiAuthVoice
-        auth = ElpatiAuthVoice()
-        pw = self._pw_var.get() or "cyberos2026"
+        auth = self._auth
+        pw = self._pw_var.get()
+        if auth.needs_setup:
+            if pw != self._pw_confirm.get() or not auth.set_password(pw):
+                self._login_msg.config(text="Confirmation identique et 12 caractères minimum requis.")
+                return
         if auth.verify_password(pw):
             self._login_msg.config(text="✓ OK", fg=self._T["success"])
-            self.root.after(600, self._init_dashboard)
+            self.root.after(100, self._init_dashboard)
         else:
-            self._login_msg.config(text="✗ " + ("Compte bloqué 5min" if auth.is_locked() else "Mot de passe incorrect"))
+            error = auth.get_status().get("error")
+            self._login_msg.config(text=error or ("Compte bloqué 5 min" if auth.is_locked() else "Mot de passe incorrect"))
             self._pw_var.set("")
 
     def _init_dashboard(self):
@@ -198,10 +220,13 @@ class CyberOSApp:
             from core.controller import CentralController
             self._controller = CentralController()
             self._controller.initialize_all_modules()
+            if self._closed:
+                self._controller.stop_protection()
+                return
             self._controller.register_alert_callback(self._on_alert_cb)
             self._controller.start_protection()
-            self.root.after(0, self._build_main_dashboard)
-        threading.Thread(target=_go, daemon=True).start()
+            self._dispatch(self._build_main_dashboard)
+        self._run_job(_go)
 
     def _on_alert_cb(self, alert):
         self._alerts.insert(0, alert)
@@ -233,14 +258,14 @@ class CyberOSApp:
         tk.Label(bar, text="⬢  CyberOS_Security",
                  font=("Consolas", F["title"], "bold"),
                  bg=T["bg_light"], fg=T["accent"]).pack(side="left", padx=16, pady=10)
-        tk.Label(bar, text="ELPATI v2026.2",
+        tk.Label(bar, text="ELPATI v2026.2.1",
                  font=("Consolas", F["body"]),
                  bg=T["bg_light"], fg=T["text_muted"]).pack(side="left")
         self._ai_badge = tk.Label(bar, text="",
                                    font=("Consolas", F["body"]),
                                    bg=T["bg_light"], fg=T["warning"])
         self._ai_badge.pack(side="left", padx=10)
-        self._topbar_status = tk.Label(bar, text=f"● {self.cfg.t('status_protected')}",
+        self._topbar_status = tk.Label(bar, text="● Surveillance locale" if self._controller and self._controller._protection_active else "● Outils locaux",
                                         font=("Consolas", F["body"], "bold"),
                                         bg=T["bg_light"], fg=T["success"])
         self._topbar_status.pack(side="right", padx=16)
@@ -348,7 +373,7 @@ class CyberOSApp:
             btn.bind("<Button-5>", _on_mousewheel_linux)
 
         # Version label at bottom of inner frame
-        tk.Label(inner, text="v2026.2 | EDR/XDR",
+        tk.Label(inner, text="v2026.2.1 | Outils locaux",
                  font=("Consolas", F["body"]),
                  bg=T["bg_light"], fg=T["text_muted"]).pack(pady=10)
 
@@ -497,12 +522,12 @@ class CyberOSApp:
         self._stop_btn.config(state="normal")
         self._scan_status.config(text=f"Scan {'rapide' if mode=='quick' else 'complet'} en cours...",
                                   fg=self._T["warning"])
-        threading.Thread(target=self._do_scan, args=(mode, path), daemon=True).start()
+        self._run_job(lambda: self._do_scan(mode, path))
 
     def _stop_scan(self):
         """Demande l'arrêt propre du scan en cours."""
         self._scan_stop_requested = True
-        self._scan_running = False
+        self._controller._modules["engine"].stop_scan()
         try:
             self._stop_btn.config(state="disabled", text="⏹  ARRÊT...")
             self._scan_status.config(text="⏹ Arrêt demandé — attente de la fin du fichier en cours...",
@@ -516,45 +541,51 @@ class CyberOSApp:
                 # Inject stop flag into engine
                 engine = self._controller._modules.get("engine")
                 if engine:
-                    engine._scan_running = False
+                    engine.stop_scan()
             tot = p.get("total", 1) or 1
             pct = p["scanned"] / tot * 100
             elapsed = time.time() - self._scan_start
-            self.root.after(0, lambda: self._upd_scan(pct, p["scanned"], p["threats"], elapsed))
+            self._dispatch(lambda: self._upd_scan(pct, p["scanned"], p["threats"], elapsed))
 
         result = (self._controller.run_quick_scan(callback=cb) if mode == "quick"
                   else self._controller.run_full_scan(path=path, callback=cb))
 
+        self._last_scan_result = result
+        self._scan_running = False
         # Si arrêté manuellement, ajouter la mention dans les résultats
         if getattr(self, "_scan_stop_requested", False):
             result["_stopped_by_user"] = True
-        self.root.after(0, lambda: self._show_scan_results(result))
+        self._dispatch(lambda: self._show_scan_results(result))
 
     def _upd_scan(self, pct, f, t, elapsed):
         try:
             self._prog_var.set(pct)
             self._s_files.config(text=f"Fichiers: {f:,}")
-            self._s_threats.config(text=f"Menaces: {t}")
+            self._s_threats.config(text=f"Alertes: {t}")
             self._s_time.config(text=f"Durée: {elapsed:.0f}s")
         except: pass
 
     def _show_scan_results(self, r):
         self._scan_running = False
         self._scan_stop_requested = False
+        self._last_scan_result = r
         T = self._T
         try:
             self._scan_btn.config(state="normal", text=f"▶  {self.cfg.t('btn_scan')}")
             self._stop_btn.config(state="disabled", text="⏹  STOP")
-            stopped = r.get("_stopped_by_user", False)
+            stopped = r.get("_stopped_by_user", False) or r.get("cancelled", False)
             self._prog_var.set(r.get("_pct", 100) if stopped else 100)
             n = r.get("threats_found", 0)
             if stopped:
                 self._scan_status.config(
-                    text=f"⏹ Scan arrêté — {r.get('files_scanned',0):,} fichiers analysés | {n} menaces",
+                    text=f"⏹ Scan arrêté — {r.get('files_scanned',0):,} fichiers examinés | {n} alertes",
                     fg=T["warning"])
+            elif r.get("errors") or r.get("skipped"):
+                self._scan_status.config(text=f"Analyse partielle : {r.get('errors', 0)} erreurs, {r.get('skipped', 0)} fichiers ignorés",
+                                         fg=T["warning"])
             else:
                 self._scan_status.config(
-                    text=f"{'✓ ' + self.cfg.t('scan_complete') if n==0 else '⚠ ' + self.cfg.t('threats_detected')} — {r['files_scanned']:,} fichiers | {n} menaces",
+                    text=f"{'✓ ' + self.cfg.t('scan_complete') if n==0 else '⚠ ' + self.cfg.t('threats_detected')} — {r['files_scanned']:,} fichiers | {n} alertes",
                     fg=T["success"] if n == 0 else T["danger"])
             self._scan_results.config(state="normal")
             self._scan_results.delete("1.0","end")
@@ -563,18 +594,27 @@ class CyberOSApp:
                    f"Terminé:  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
                    f"Durée:    {r.get('duration_sec',0):.2f}s\n"
                    f"Fichiers: {r.get('files_scanned',0):,}\n"
-                   f"Menaces:  {r.get('threats_found',0)}\n"
+                   f"Alertes:  {r.get('threats_found',0)}\n"
+                   f"Signatures identifiées: {r.get('confirmed_threats', 0)}\n"
+                   f"Indices à examiner: {r.get('review_count', 0)}\n"
                    f"Erreurs:  {r.get('errors',0)}\n"
+                   f"Fichiers ignorés: {r.get('skipped', 0)}\n"
+                   + ("Portée rapide: 2 niveaux de sous-dossiers; utiliser le scan complet pour approfondir.\n"
+                      if r.get('max_directory_depth') is not None else "")
                    + (f"STATUT:   Scan interrompu manuellement\n" if stopped else "")
                    + f"{'='*60}\n\n")
             self._scan_results.insert("end", txt)
             if r.get("threats"):
-                self._scan_results.insert("end", "MENACES DÉTECTÉES:\n\n")
-                for t in r["threats"]:
+                self._scan_results.insert("end", "RÉSULTATS À EXAMINER (indices distincts des signatures):\n\n")
+                preview = sorted(r["threats"], key=lambda item: (bool(item.get("confirmed")), item.get("score", 0)), reverse=True)
+                for t in preview[:200]:
+                    evidence = "SIGNATURE" if t.get("confirmed") else "INDICE NON CONFIRMÉ"
                     self._scan_results.insert("end",
-                        f"[{t.get('type','?')}] Score:{t.get('score',0):3d} | {t.get('path','')}\n")
+                        f"[{evidence}] [{t.get('type','?')}] Score:{t.get('score',0):3d} | {t.get('path','')}\n")
                     if t.get("ai_verdict"):
                         self._scan_results.insert("end", f"   └─ IA: {t['ai_verdict']}\n")
+                if len(preview) > 200:
+                    self._scan_results.insert("end", f"\nAperçu limité à 200 sur {len(preview)} alertes. Exporter le rapport et son JSON pour tous les détails.\n")
             else:
                 self._scan_results.insert("end", f"✓ {self.cfg.t('no_threats')}\n")
             self._scan_results.config(state="disabled")
@@ -650,19 +690,19 @@ class CyberOSApp:
 
     def _run_memory_scan(self):
         def _go():
-            self.root.after(0, lambda: self._mem_box.config(state="normal"))
-            self.root.after(0, lambda: self._mem_box.delete("1.0","end"))
-            self.root.after(0, lambda: self._mem_box.insert("end","[*] Analyse mémoire en cours...\n"))
+            self._dispatch(lambda: self._mem_box.config(state="normal"))
+            self._dispatch(lambda: self._mem_box.delete("1.0","end"))
+            self._dispatch(lambda: self._mem_box.insert("end","[*] Analyse mémoire en cours...\n"))
             results = self._controller._modules["memory_scan"].scan_all_processes(top_risk_only=True)
             txt = f"\n[MÉMOIRE SCAN COMPLET]\n{'='*50}\nProcessus flagués: {len(results)}\n\n"
             for r in results[:20]:
                 txt += f"PID:{r['pid']:6}  Score:{r['score']:3}  Risque:{r.get('risk','?'):8}  [{r.get('name','?')}]\n"
                 for fi in r.get("findings",[])[:3]:
                     txt += f"         └─ {fi.get('type','')} {fi.get('pattern','')[:40]}\n"
-            self.root.after(0, lambda: self._mem_box.insert("end", txt))
-            self.root.after(0, lambda: self._mem_box.see("end"))
-            self.root.after(0, lambda: self._mem_box.config(state="disabled"))
-        threading.Thread(target=_go, daemon=True).start()
+            self._dispatch(lambda: self._mem_box.insert("end", txt))
+            self._dispatch(lambda: self._mem_box.see("end"))
+            self._dispatch(lambda: self._mem_box.config(state="disabled"))
+        self._run_job(_go)
 
     def _show_network(self):
         self._clear_content()
@@ -749,12 +789,38 @@ class CyberOSApp:
             for col, w in zip(cols, widths):
                 tree.heading(col, text=col); tree.column(col, width=w)
             for it in qm.list_quarantined():
-                tree.insert("","end", values=(
+                tree.insert("","end", iid=it["id"], values=(
                     it.get("quarantined_at","")[:10],
                     it.get("original_name","")[:35],
                     it.get("threat_info",{}).get("type","?"),
                     (it.get("hash") or "?")[:20]+"..."))
             tree.pack(fill="both", expand=True)
+            actions = self._frame(f, "bg_medium")
+            actions.pack(fill="x", pady=8)
+            def restore():
+                selected = tree.selection()
+                if not selected or not messagebox.askyesno("Restaurer", "Restaurer le fichier sélectionné ? Il peut être dangereux."):
+                    return
+                result = qm.restore_file(selected[0])
+                if not result.get("success") and "existe déjà" in result.get("error", ""):
+                    target = filedialog.asksaveasfilename(title="Restaurer vers un nouveau fichier")
+                    if target:
+                        result = qm.restore_file(selected[0], target)
+                if result.get("success"):
+                    self._show_quarantine()
+                else:
+                    messagebox.showerror("Restauration", result.get("error", "Échec"))
+            def delete():
+                selected = tree.selection()
+                if not selected or not messagebox.askyesno("Supprimer", "Supprimer définitivement le fichier chiffré sélectionné ?"):
+                    return
+                result = qm.delete_quarantined(selected[0])
+                if result.get("success"):
+                    self._show_quarantine()
+                else:
+                    messagebox.showerror("Suppression", result.get("error", "Échec"))
+            self._btn(actions, "RESTAURER", restore, padx=10, pady=6).pack(side="left", padx=4)
+            self._btn(actions, "SUPPRIMER", delete, color=T["danger"], padx=10, pady=6).pack(side="left", padx=4)
         except Exception as e:
             tk.Label(f, text=str(e), bg=T["bg_medium"], fg=T["danger"]).pack()
 
@@ -788,14 +854,14 @@ class CyberOSApp:
         if not fp or not os.path.exists(fp):
             messagebox.showerror("Erreur","Fichier introuvable"); return
         def _go():
-            self.root.after(0, lambda: self._sb_box.config(state="normal"))
-            self.root.after(0, lambda: self._sb_box.delete("1.0","end"))
-            self.root.after(0, lambda: self._sb_box.insert("end",f"[*] Analyse de {fp}...\n"))
+            self._dispatch(lambda: self._sb_box.config(state="normal"))
+            self._dispatch(lambda: self._sb_box.delete("1.0","end"))
+            self._dispatch(lambda: self._sb_box.insert("end",f"[*] Analyse de {fp}...\n"))
             r = self._controller._modules["sandbox"].analyze_file(fp)
             txt = json.dumps(r, indent=2, default=str)
-            self.root.after(0, lambda: self._sb_box.insert("end","\n"+txt))
-            self.root.after(0, lambda: self._sb_box.config(state="disabled"))
-        threading.Thread(target=_go, daemon=True).start()
+            self._dispatch(lambda: self._sb_box.insert("end","\n"+txt))
+            self._dispatch(lambda: self._sb_box.config(state="disabled"))
+        self._run_job(_go)
 
     def _show_forensic(self):
         self._clear_content()
@@ -852,8 +918,8 @@ class CyberOSApp:
     def _do_forensic(self):
         def _go():
             path = self._controller._modules["forensic"].generate_report()
-        msg = "Rapport sauvegarde : " + path + "\n\nVoulez-vous ouvrir le dossier ?"
-        threading.Thread(target=_go, daemon=True).start()
+            self._dispatch(lambda p=path: messagebox.showinfo("Rapport", f"Rapport sauvegardé : {p}"))
+        self._run_job(_go)
 
     # ═══════════════════════════════════════════════════════════════════
     #  AI ANALYST PAGE
@@ -902,14 +968,15 @@ class CyberOSApp:
         if not fp or not os.path.exists(fp):
             messagebox.showerror("Erreur","Fichier introuvable"); return
         def _go():
-            self.root.after(0, lambda: self._ai_box.config(state="normal"))
-            self.root.after(0, lambda: self._ai_box.delete("1.0","end"))
-            self.root.after(0, lambda: self._ai_box.insert("end",f"[IA] Analyse de {fp}...\n"))
+            self._dispatch(lambda: self._ai_box.config(state="normal"))
+            self._dispatch(lambda: self._ai_box.delete("1.0","end"))
+            self._dispatch(lambda: self._ai_box.insert("end",f"[IA] Analyse de {fp}...\n"))
             # First do local heuristic analysis
             file_result = self._controller._modules["ai_analyzer"].analyze_file_heuristic(fp)
             # Then run through AI core
             ai_result = self._controller.ai.analyze_threat({
                 "type": "file_analysis", "file_path": fp,
+                "unconfirmed_file": True,
                 "local_score": file_result.get("score", 0),
                 "indicators": {n: True for n in file_result.get("notes", [])[:5]},
                 "behavior": {}
@@ -923,9 +990,9 @@ class CyberOSApp:
                    f"Actions recommandées:\n{chr(10).join('  • '+a for a in ai_result.get('actions',[]))}\n\n"
                    f"Analyse locale:\n  Score: {file_result.get('score',0)}\n"
                    f"  Notes: {', '.join(file_result.get('notes',[]))}\n")
-            self.root.after(0, lambda: self._ai_box.insert("end", txt))
-            self.root.after(0, lambda: self._ai_box.config(state="disabled"))
-        threading.Thread(target=_go, daemon=True).start()
+            self._dispatch(lambda: self._ai_box.insert("end", txt))
+            self._dispatch(lambda: self._ai_box.config(state="disabled"))
+        self._run_job(_go)
 
     # ═══════════════════════════════════════════════════════════════════
     #  LOGS
@@ -1166,7 +1233,7 @@ class CyberOSApp:
         self._pw_cfm = tk.StringVar()
         for lbl, var in [
             ("Mot de passe actuel:", self._pw_cur),
-            ("Nouveau mot de passe (min. 6 car.):", self._pw_new),
+            ("Nouveau mot de passe (min. 12 car.):", self._pw_new),
             ("Confirmer nouveau:", self._pw_cfm),
         ]:
             row = self._frame(fields_f, "bg_light")
@@ -1334,41 +1401,8 @@ class CyberOSApp:
                 tk.Label(row, text=sym, font=("Consolas", F["nav"], "bold"),
                          bg=T["bg_light"], fg=col, width=8).pack(side="left", padx=4)
 
-        # Key Generator
-        tk.Label(sc, text="GÉNÉRATEUR DE CLÉS (ADMIN)",
-                 font=("Consolas", F["nav"], "bold"),
-                 bg=T["bg_medium"], fg=T["text_sub"]).pack(anchor="w", pady=(16,8))
-        gen_f = self._frame(sc, "bg_light")
-        gen_f.pack(fill="x")
-        gen_inner = self._frame(gen_f, "bg_light")
-        gen_inner.pack(padx=15, pady=12)
-        self._gen_tier = tk.StringVar(value="PRO")
-        self._gen_days = tk.StringVar(value="365")
-        tk.Label(gen_inner, text="Niveau:", font=("Consolas", F["body"]),
-                 bg=T["bg_light"], fg=T["text_sub"]).pack(side="left")
-        for t_opt in ("FREE", "PRO", "ENTERPRISE"):
-            tk.Radiobutton(gen_inner, text=t_opt, variable=self._gen_tier, value=t_opt,
-                           font=("Consolas", F["body"]),
-                           bg=T["bg_light"], fg=T["text"],
-                           selectcolor=T["bg_dark"],
-                           activebackground=T["bg_light"]).pack(side="left", padx=6)
-        tk.Label(gen_inner, text="  Jours:", font=("Consolas", F["body"]),
-                 bg=T["bg_light"], fg=T["text_sub"]).pack(side="left", padx=(10,4))
-        self._entry(gen_inner, self._gen_days, width=6,
-                    bg=T["bg_dark"]).pack(side="left")
-
-        self._gen_key_lbl = tk.Label(gen_f, text="",
-                                      font=("Consolas", F["body"]),
-                                      bg=T["bg_light"], fg=T["accent"],
-                                      wraplength=550)
-        self._gen_key_lbl.pack(padx=15, pady=(0,6))
-
-        btn_row = self._frame(gen_f, "bg_light")
-        btn_row.pack(fill="x", padx=15, pady=(0,12))
-        self._btn(btn_row, "🔑 GÉNÉRER LA CLÉ", self._gen_key_now,
-                  color=T["success"], fg=T["bg_dark"], padx=14, pady=8).pack(side="left", padx=4)
-        self._btn(btn_row, "📋 COPIER", self._copy_key,
-                  color=T["bg_dark"], fg=T["text"], padx=12, pady=8).pack(side="left", padx=4)
+        tk.Label(sc, text="Les licences sont signées par le propriétaire du logiciel.",
+                 bg=T["bg_medium"], fg=T["text_sub"]).pack(anchor="w", pady=12)
 
         # Key Activation
         tk.Label(sc, text="ACTIVER UNE LICENCE",
@@ -1389,21 +1423,6 @@ class CyberOSApp:
         self._act_msg.pack(pady=(0,6))
         self._btn(act_f, f"✓ {self.cfg.t('btn_activate')} LA LICENCE",
                   self._activate_key, color=T["accent"], padx=14, pady=9).pack(padx=15, pady=(0,12), anchor="w")
-
-    def _gen_key_now(self):
-        tier = self._gen_tier.get()
-        try: days = int(self._gen_days.get())
-        except: days = 365
-        key = self._controller.payment.generate_key(tier, days)
-        self._gen_key_lbl.config(text=f"CLÉ: {key}")
-        self._last_key = key
-
-    def _copy_key(self):
-        key = getattr(self, "_last_key", "")
-        if key:
-            self.root.clipboard_clear()
-            self.root.clipboard_append(key)
-            self._gen_key_lbl.config(text=f"✓ Copié! {key}")
 
     def _activate_key(self):
         key = self._act_key.get().strip()
@@ -1443,10 +1462,10 @@ class CyberOSApp:
                  font=("Consolas", F["nav"], "bold"),
                  bg=T["bg_medium"], fg=T["text_sub"]).pack(anchor="w", pady=(12,4))
         for line in [
-            "CyberOS_Security v2026.2",
-            "Système ELPATI — Advanced EDR/XDR Platform",
-            "Protection locale hors-ligne 100%",
-            "Architecture stable 2026-2036",
+            "CyberOS_Security v2026.2.1",
+            "Système ELPATI — outils locaux de sécurité",
+            "Heuristiques locales et rapports; API facultative",
+            "Version corrigée 2026.2.1 — limites dans le README",
             "Développé pour la cybersécurité africaine et mondiale",
         ]:
             tk.Label(sc, text=f"  {line}",
@@ -1613,9 +1632,9 @@ class CyberOSApp:
             from elpati.elpati_url_scanner import ElpatiURLScanner
             scanner = ElpatiURLScanner()
             result = scanner.scan_url(url)
-            self.root.after(0, lambda: self._display_url_results(result))
+            self._dispatch(lambda: self._display_url_results(result))
 
-        threading.Thread(target=_go, daemon=True).start()
+        self._run_job(_go)
 
     def _display_url_results(self, r: dict):
         """Affiche les résultats du scan URL."""
@@ -1873,19 +1892,21 @@ class CyberOSApp:
 
         def _go():
             try:
-                self.root.after(0, lambda: status_lbl.config(text="Analyse IA en cours..."))
+                self._dispatch(lambda: status_lbl.config(text="Analyse IA en cours..."))
                 path = generate_fn()
-                self.root.after(0, lambda: self._pdf_done(win, pb, path))
+                self._dispatch(lambda: self._pdf_done(win, pb, path))
             except Exception as e:
-                self.root.after(0, lambda: self._pdf_error(win, pb, str(e)))
+                self._dispatch(lambda error=str(e): self._pdf_error(win, pb, error))
 
-        threading.Thread(target=_go, daemon=True).start()
+        self._run_job(_go)
 
     def _pdf_done(self, win, pb, path: str):
         pb.stop()
         win.destroy()
         from tkinter import messagebox
-        msg = "Rapport PDF sauvegarde :\n" + str(path) + "\n\nOuvrir le dossier contenant le fichier ?"
+        msg = ("Rapport PDF sauvegarde :\n" + str(path) +
+               "\n\nLes donnees detaillees sont conservees dans le fichier JSON du meme nom." +
+               "\n\nOuvrir le dossier contenant les fichiers ?")
         if messagebox.askyesno("Succes", msg):
             import subprocess, os
             folder = str(Path(path).parent)
@@ -1900,6 +1921,29 @@ class CyberOSApp:
         from tkinter import messagebox
         msg = "Impossible de generer le rapport.\n" + str(error) + "\n\nInstallez reportlab: pip install reportlab"
         messagebox.showerror("Erreur PDF", msg)
+
+    def _gen_pdf_report(self, report_type):
+        from reports.pdf_generator import PDFReportGenerator
+        gen = PDFReportGenerator()
+        if report_type == "SCAN":
+            if not self._last_scan_result:
+                messagebox.showinfo("Rapport", "Lancer d'abord un scan de fichiers.")
+                return
+            result = dict(self._last_scan_result)
+            job = lambda: gen.generate_scan_report(result)
+        elif report_type == "URL":
+            if not self._last_url_result:
+                messagebox.showinfo("Rapport", "Lancer d'abord une analyse URL.")
+                return
+            result = dict(self._last_url_result)
+            job = lambda: gen.generate_url_report(result)
+        elif report_type == "FULL":
+            scan = dict(self._last_scan_result) if self._last_scan_result else None
+            url = dict(self._last_url_result) if self._last_url_result else None
+            job = lambda: gen.generate_full_report(self._controller, scan, url)
+        else:
+            job = lambda: gen.generate_evening_report(self._controller, report_type)
+        self._show_pdf_progress("Rapport PDF", job)
 
     def _generate_evening_pdf(self) -> str:
         from reports.pdf_generator import PDFReportGenerator
@@ -1918,249 +1962,24 @@ class CyberOSApp:
     #  UTILITIES
     # ═══════════════════════════════════════════════════════════════════
     def _clear_root(self):
+        self._page_generation += 1
         for w in self.root.winfo_children(): w.destroy()
 
     # ═══════════════════════════════════════════════════════════════════
     #  VULN SCAN — Scanner de vulnérabilités CVE
     # ═══════════════════════════════════════════════════════════════════
-    def _show_vuln_scan(self):
-        self._clear_content()
-        T, F = self._T, self._F
-        f = self._frame(self._content, "bg_medium")
-        f.pack(fill="both", expand=True, padx=20, pady=20)
-        tk.Label(f, text="🔎 SCANNER DE VULNÉRABILITÉS",
-                 font=("Consolas", F["title"], "bold"),
-                 bg=T["bg_medium"], fg=T["accent"]).pack(anchor="w")
-        tk.Label(f,
-                 text="Détecte les CVE critiques, configurations faibles et ports exposés — 100% local",
-                 font=("Consolas", F["body"]),
-                 bg=T["bg_medium"], fg=T["text_muted"]).pack(anchor="w", pady=(2,14))
 
-        btn_row = self._frame(f, "bg_medium")
-        btn_row.pack(fill="x", pady=(0,10))
-        self._vuln_btn = self._btn(btn_row, "▶  LANCER LE SCAN CVE",
-                                    self._run_vuln_scan, padx=18, pady=10)
-        self._vuln_btn.pack(side="left")
-        self._vuln_status = tk.Label(btn_row, text="",
-                                      font=("Consolas", F["body"]),
-                                      bg=T["bg_medium"], fg=T["warning"])
-        self._vuln_status.pack(side="left", padx=12)
 
-        self._vuln_box = self._scrolltext(f, h=28)
-        self._vuln_box.pack(fill="both", expand=True)
-        self._vuln_box.insert("end", "Cliquez LANCER pour analyser les vulnerabilites...\n")
-        self._vuln_box.config(state="disabled")
-
-    def _run_vuln_scan(self):
-        self._vuln_btn.config(state="disabled", text="Analyse CVE en cours...")
-        self._vuln_status.config(text="Scan en cours...", fg=self._T["warning"])
-        def _go():
-            vuln = self._controller._modules["vuln_scan"]
-            results = vuln.run_full_scan()
-            self.root.after(0, lambda: self._show_vuln_results(results))
-        threading.Thread(target=_go, daemon=True).start()
-
-    def _show_vuln_results(self, r):
-        T, F = self._T, self._F
-        self._vuln_btn.config(state="normal", text="▶  LANCER LE SCAN CVE")
-        score = r.get("score", 0)
-        col = T["success"] if score <= 20 else (T["warning"] if score <= 60 else T["danger"])
-        self._vuln_status.config(text=f"Score: {score}/100 | Critique: {r.get('critical_count',0)} | Élevé: {r.get('high_count',0)}", fg=col)
-        self._vuln_box.config(state="normal")
-        self._vuln_box.delete("1.0","end")
-        txt = f"{'='*60}\nSCAN DE VULNÉRABILITÉS\n{'='*60}\n"
-        txt += f"Système   : {r.get('os','?')}\n"
-        txt += f"Score     : {score}/100\n"
-        txt += f"Critique  : {r.get('critical_count',0)}\n"
-        txt += f"Élevé     : {r.get('high_count',0)}\n"
-        txt += f"Durée     : {r.get('duration_sec',0):.2f}s\n{'='*60}\n\n"
-        weak = r.get("weak_configs", [])
-        if weak:
-            txt += f"CONFIGURATIONS FAIBLES ({len(weak)}) :\n"
-            for w in weak:
-                txt += f"  [{w.get('score',0):4.1f}] {w.get('name','?')} — {w.get('desc','?')}\n"
-            txt += "\n"
-        ports = r.get("open_ports", [])
-        if ports:
-            txt += f"PORTS OUVERTS ({len(ports)}) :\n"
-            for p in ports:
-                txt += f"  Port {p['port']:5} [{p['service']:12}] Risque: {p['risk']}\n"
-            txt += "\n"
-        if not weak and not ports:
-            txt += "✓ Aucune vulnérabilité critique détectée !\n"
-        self._vuln_box.insert("end", txt)
-        self._vuln_box.config(state="disabled")
 
     # ═══════════════════════════════════════════════════════════════════
     #  SCHEDULER — Planificateur de scans automatiques
     # ═══════════════════════════════════════════════════════════════════
-    def _show_scheduler(self):
-        self._clear_content()
-        T, F = self._T, self._F
-        f = self._frame(self._content, "bg_medium")
-        f.pack(fill="both", expand=True, padx=20, pady=20)
-        tk.Label(f, text="⏰ PLANIFICATEUR DE SCANS",
-                 font=("Consolas", F["title"], "bold"),
-                 bg=T["bg_medium"], fg=T["accent"]).pack(anchor="w")
-        tk.Label(f, text="Automatisez vos scans — Protection 24h/24 sans intervention",
-                 font=("Consolas", F["body"]),
-                 bg=T["bg_medium"], fg=T["text_muted"]).pack(anchor="w", pady=(2,14))
 
-        # Formulaire ajout tâche
-        form_f = self._frame(f, "bg_light")
-        form_f.pack(fill="x", pady=(0,10))
-        tk.Label(form_f, text="  Nouvelle tâche planifiée :",
-                 font=("Consolas", F["nav"], "bold"),
-                 bg=T["bg_light"], fg=T["text_sub"]).pack(anchor="w", padx=15, pady=(10,6))
-        row1 = self._frame(form_f, "bg_light")
-        row1.pack(fill="x", padx=15, pady=(0,4))
 
-        tk.Label(row1, text="Nom:", font=("Consolas", F["body"]),
-                 bg=T["bg_light"], fg=T["text_sub"]).pack(side="left")
-        self._sched_name = tk.StringVar(value="Scan quotidien")
-        self._entry(row1, self._sched_name, width=18).pack(side="left", padx=6)
-
-        tk.Label(row1, text="Type:", font=("Consolas", F["body"]),
-                 bg=T["bg_light"], fg=T["text_sub"]).pack(side="left", padx=(10,0))
-        self._sched_type = tk.StringVar(value="quick_scan")
-        type_cb = ttk.Combobox(row1, textvariable=self._sched_type, width=14,
-                                values=["quick_scan","full_scan","memory_scan","report"],
-                                state="readonly")
-        type_cb.pack(side="left", padx=6)
-
-        tk.Label(row1, text="Heure:", font=("Consolas", F["body"]),
-                 bg=T["bg_light"], fg=T["text_sub"]).pack(side="left", padx=(10,0))
-        self._sched_hour = tk.StringVar(value="02")
-        hours_cb = ttk.Combobox(row1, textvariable=self._sched_hour, width=4,
-                                 values=[f"{h:02d}" for h in range(24)], state="readonly")
-        hours_cb.pack(side="left", padx=2)
-        tk.Label(row1, text="h", font=("Consolas", F["body"]),
-                 bg=T["bg_light"], fg=T["text_sub"]).pack(side="left")
-        self._sched_min = tk.StringVar(value="00")
-        mins_cb = ttk.Combobox(row1, textvariable=self._sched_min, width=4,
-                                values=[f"{m:02d}" for m in range(0,60,5)], state="readonly")
-        mins_cb.pack(side="left", padx=2)
-
-        btn_row = self._frame(form_f, "bg_light")
-        btn_row.pack(fill="x", padx=15, pady=(6,12))
-        self._btn(btn_row, "➕ AJOUTER", self._add_schedule,
-                  color=T["success"], fg=T["bg_dark"], padx=12, pady=6).pack(side="left")
-        self._sched_msg = tk.Label(btn_row, text="",
-                                   font=("Consolas", F["body"]),
-                                   bg=T["bg_light"], fg=T["success"])
-        self._sched_msg.pack(side="left", padx=10)
-
-        # Liste des tâches
-        tk.Label(f, text="TÂCHES PLANIFIÉES",
-                 font=("Consolas", F["nav"], "bold"),
-                 bg=T["bg_medium"], fg=T["text_sub"]).pack(anchor="w", pady=(8,4))
-
-        cols = ("Nom","Type","Heure","Prochaine exécution","Statut")
-        self._sched_tree = ttk.Treeview(f, columns=cols, show="headings", height=12)
-        widths = [160, 120, 60, 180, 80]
-        for col, w in zip(cols, widths):
-            self._sched_tree.heading(col, text=col)
-            self._sched_tree.column(col, width=w)
-        self._sched_tree.pack(fill="both", expand=True)
-        self._refresh_scheduler()
-
-    def _add_schedule(self):
-        try:
-            sched = self._controller._modules["scheduler"]
-            task_id = sched.add_task(
-                name=self._sched_name.get(),
-                task_type=self._sched_type.get(),
-                hour=int(self._sched_hour.get()),
-                minute=int(self._sched_min.get()),
-            )
-            self._sched_msg.config(text=f"✓ Tâche ajoutée (ID: {task_id[:8]})", fg=self._T["success"])
-            self._refresh_scheduler()
-        except Exception as e:
-            self._sched_msg.config(text=f"✗ Erreur: {e}", fg=self._T["danger"])
-
-    def _refresh_scheduler(self):
-        try:
-            for i in self._sched_tree.get_children(): self._sched_tree.delete(i)
-            tasks = self._controller._modules["scheduler"].get_tasks()
-            for t in tasks:
-                status = "✓ Actif" if t.get("enabled") else "⏸ Pause"
-                next_r = t.get("next_run","?")[:16].replace("T"," ") if t.get("next_run") else "?"
-                self._sched_tree.insert("","end", values=(
-                    t.get("name","?"), t.get("type","?"),
-                    f"{t.get('hour',0):02d}:{t.get('minute',0):02d}",
-                    next_r, status))
-        except: pass
 
     # ═══════════════════════════════════════════════════════════════════
     #  AUTO RESPONSE — Réponse automatique aux incidents
     # ═══════════════════════════════════════════════════════════════════
-    def _show_auto_response(self):
-        self._clear_content()
-        T, F = self._T, self._F
-        f = self._frame(self._content, "bg_medium")
-        f.pack(fill="both", expand=True, padx=20, pady=20)
-        tk.Label(f, text="🤖 RÉPONSE AUTOMATIQUE AUX INCIDENTS",
-                 font=("Consolas", F["title"], "bold"),
-                 bg=T["bg_medium"], fg=T["accent"]).pack(anchor="w")
-        tk.Label(f, text="SOAR — Security Orchestration, Automation and Response",
-                 font=("Consolas", F["body"]),
-                 bg=T["bg_medium"], fg=T["text_muted"]).pack(anchor="w", pady=(2,14))
-
-        try:
-            ar = self._controller._modules["auto_response"]
-            status = ar.get_status()
-            sf = self._frame(f, "bg_light")
-            sf.pack(fill="x", pady=(0,12))
-            # Toggle enable
-            state_col = T["success"] if status["enabled"] else T["danger"]
-            state_txt = "● ACTIF" if status["enabled"] else "○ INACTIF"
-            tk.Label(sf, text=f"  Statut : {state_txt}",
-                     font=("Consolas", F["nav"], "bold"),
-                     bg=T["bg_light"], fg=state_col).pack(side="left", padx=15, pady=10)
-            toggle_lbl = "DÉSACTIVER" if status["enabled"] else "ACTIVER"
-            toggle_col = T["warning"] if status["enabled"] else T["success"]
-            def toggle_ar():
-                if ar.get_status()["enabled"]: ar.disable()
-                else: ar.enable()
-                self._show_auto_response()
-            self._btn(sf, toggle_lbl, toggle_ar,
-                      color=toggle_col, fg=T["bg_dark"], padx=12, pady=6).pack(side="right", padx=15)
-
-            # Playbooks
-            tk.Label(f, text="PLAYBOOKS DE RÉPONSE AUTOMATIQUE",
-                     font=("Consolas", F["nav"], "bold"),
-                     bg=T["bg_medium"], fg=T["text_sub"]).pack(anchor="w", pady=(8,4))
-            for pb in ar.get_playbooks():
-                pb_f = self._frame(f, "bg_light")
-                pb_f.pack(fill="x", pady=2)
-                tk.Label(pb_f, text=f"  ⚡ {pb['name']}",
-                         font=("Consolas", F["body"], "bold"),
-                         bg=T["bg_light"], fg=T["accent"]).pack(anchor="w", padx=12, pady=3)
-                tk.Label(pb_f, text=f"     {pb.get('description','')}",
-                         font=("Consolas", F["body"]),
-                         bg=T["bg_light"], fg=T["text_sub"]).pack(anchor="w", padx=12, pady=(0,3))
-                trigger = pb.get("trigger",{})
-                acts = " · ".join(pb.get("actions",[])[:4])
-                tk.Label(pb_f,
-                         text=f"     Déclencheur: score >= {trigger.get('min_score',0)} | Actions: {acts}",
-                         font=("Consolas", max(F["body"]-1,7)),
-                         bg=T["bg_light"], fg=T["text_muted"]).pack(anchor="w", padx=12, pady=(0,5))
-
-            # Historique
-            tk.Label(f, text=f"HISTORIQUE DES ACTIONS ({len(ar.get_history())} actions)",
-                     font=("Consolas", F["nav"], "bold"),
-                     bg=T["bg_medium"], fg=T["text_sub"]).pack(anchor="w", pady=(12,4))
-            hist_box = self._scrolltext(f, h=8)
-            hist_box.pack(fill="x")
-            for action in ar.get_history(20):
-                ts = action.get("ts","")[:19]
-                pb_name = action.get("playbook","?")
-                n_actions = len(action.get("actions",[]))
-                hist_box.insert("end", f"[{ts}] {pb_name} — {n_actions} actions\n")
-            hist_box.config(state="disabled")
-        except Exception as e:
-            tk.Label(f, text=f"Module indisponible: {e}",
-                     bg=T["bg_medium"], fg=T["danger"]).pack()
 
 
     # ═══════════════════════════════════════════════════════════════
@@ -2171,15 +1990,15 @@ class CyberOSApp:
         T, F = self._T, self._F
         f = self._frame(self._content, "bg_medium")
         f.pack(fill="both", expand=True, padx=20, pady=20)
-        tk.Label(f, text="SCANNER DE VULNERABILITES CVE",
+        tk.Label(f, text="CONTROLES DE CONFIGURATION LOCALE",
                  font=("Consolas", F["title"], "bold"),
                  bg=T["bg_medium"], fg=T["accent"]).pack(anchor="w")
-        tk.Label(f, text="Detecte configs faibles, ports exposes, CVE critiques — 100% local",
+        tk.Label(f, text="Vérifications partielles des réglages et ports locaux; aucune détection exhaustive des CVE.",
                  font=("Consolas", F["body"]),
                  bg=T["bg_medium"], fg=T["text_muted"]).pack(anchor="w", pady=(2,14))
         btn_row = self._frame(f, "bg_medium")
         btn_row.pack(fill="x", pady=(0,10))
-        self._vuln_btn = self._btn(btn_row, "LANCER LE SCAN CVE",
+        self._vuln_btn = self._btn(btn_row, "LANCER LES CONTROLES",
                                     self._run_vuln_scan, padx=18, pady=10)
         self._vuln_btn.pack(side="left")
         self._vuln_status = tk.Label(btn_row, text="",
@@ -2192,22 +2011,22 @@ class CyberOSApp:
         self._vuln_box.config(state="disabled")
 
     def _run_vuln_scan(self):
-        self._vuln_btn.config(state="disabled", text="Analyse CVE...")
+        self._vuln_btn.config(state="disabled", text="Analyse...")
         self._vuln_status.config(text="Scan en cours...", fg=self._T["warning"])
         def _go():
             try:
                 r = self._controller._modules["vuln_scan"].run_full_scan()
-                self.root.after(0, lambda: self._show_vuln_results(r))
+                self._dispatch(lambda: self._show_vuln_results(r))
             except Exception as e:
-                self.root.after(0, lambda: self._vuln_status.config(
-                    text="Erreur: " + str(e)[:60], fg=self._T["danger"]))
-                self.root.after(0, lambda: self._vuln_btn.config(
-                    state="normal", text="LANCER LE SCAN CVE"))
-        threading.Thread(target=_go, daemon=True).start()
+                self._dispatch(lambda error=str(e): self._vuln_status.config(
+                    text="Erreur: " + error[:60], fg=self._T["danger"]))
+                self._dispatch(lambda: self._vuln_btn.config(
+                    state="normal", text="LANCER LES CONTROLES"))
+        self._run_job(_go)
 
     def _show_vuln_results(self, r):
         T, F = self._T, self._F
-        self._vuln_btn.config(state="normal", text="LANCER LE SCAN CVE")
+        self._vuln_btn.config(state="normal", text="LANCER LES CONTROLES")
         score = r.get("score", 0)
         col = T["success"] if score <= 20 else (T["warning"] if score <= 60 else T["danger"])
         self._vuln_status.config(
@@ -2245,7 +2064,7 @@ class CyberOSApp:
                 lines.append("  [" + str(o.get("score",0)) + "] " + o.get("name","?"))
             lines.append("")
         if not weak and not ports and not os_sec:
-            lines.append("Aucune vulnerabilite critique detectee !")
+            lines.append("Aucun indicateur trouvé dans les contrôles effectués; ce résultat n'est pas un certificat de sécurité.")
         self._vuln_box.insert("end", "\n".join(lines))
         self._vuln_box.config(state="disabled")
 
@@ -2310,6 +2129,26 @@ class CyberOSApp:
             self._sched_tree.column(col, width=w)
         self._sched_tree.pack(fill="both", expand=True)
         self._refresh_scheduler()
+        controls = self._frame(f, "bg_medium")
+        controls.pack(fill="x", pady=6)
+        def selected_task():
+            selection = self._sched_tree.selection()
+            if not selection:
+                return None
+            return next((task for task in self._controller._modules["scheduler"].get_tasks()
+                         if task["id"] == selection[0]), None)
+        def toggle():
+            task = selected_task()
+            if task:
+                self._controller._modules["scheduler"].toggle_task(task["id"], not task["enabled"])
+                self._refresh_scheduler()
+        def remove():
+            task = selected_task()
+            if task and messagebox.askyesno("Planification", "Supprimer cette tâche ?"):
+                self._controller._modules["scheduler"].remove_task(task["id"])
+                self._refresh_scheduler()
+        self._btn(controls, "PAUSE / REPRENDRE", toggle, padx=10, pady=5).pack(side="left", padx=4)
+        self._btn(controls, "SUPPRIMER", remove, color=T["danger"], padx=10, pady=5).pack(side="left", padx=4)
 
     def _add_schedule(self):
         try:
@@ -2334,7 +2173,7 @@ class CyberOSApp:
                 nr = t.get("next_run","?")
                 if nr and "T" in nr:
                     nr = nr[:16].replace("T"," ")
-                self._sched_tree.insert("","end", values=(
+                self._sched_tree.insert("","end", iid=t["id"], values=(
                     t.get("name","?"), t.get("type","?"),
                     "%02d:%02d" % (t.get("hour",0), t.get("minute",0)),
                     nr, status))
@@ -2545,14 +2384,14 @@ class CyberOSApp:
         def _go():
             try:
                 result = self._assistant.chat(msg)
-                self.root.after(0, lambda: self._on_chat_response(result, typing_lbl))
+                self._dispatch(lambda: self._on_chat_response(result, typing_lbl))
             except Exception as e:
-                self.root.after(0, lambda: self._on_chat_response(
-                    {"response": "Desolee, une erreur s'est produite: " + str(e)[:80],
+                self._dispatch(lambda error=str(e): self._on_chat_response(
+                    {"response": "Desolee, une erreur s'est produite: " + error[:80],
                      "source":"local","suggestions":[],"ask_satisfaction":False,
                      "satisfaction_question":"","mode":"local"},
                     typing_lbl))
-        threading.Thread(target=_go, daemon=True).start()
+        self._run_job(_go)
 
     def _on_chat_response(self, result, typing_lbl):
         # Supprimer l'indicateur de frappe
@@ -2673,16 +2512,81 @@ class CyberOSApp:
         self._show_assistant()
 
     def _clear_content(self):
+        self._page_generation += 1
         for w in self._content.winfo_children(): w.destroy()
 
     def _start_live_updates(self):
-        def _tick():
-            while True:
-                try:
-                    now = datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
-                    self.root.after(0, lambda t=now: self._clock.config(text=t))
-                except: pass
-                time.sleep(1)
-        threading.Thread(target=_tick, daemon=True).start()
+        if self._clock_started:
+            return
+        self._clock_started = True
+        def tick():
+            if self._closed:
+                return
+            if hasattr(self, "_clock") and self._clock.winfo_exists():
+                self._clock.config(text=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            self.root.after(1000, tick)
+        tick()
+
+    def _dispatch(self, callback):
+        if not self._closed:
+            generation = getattr(self._job_local, "generation", None)
+            self._ui_queue.put((generation, callback))
+
+    def _drain_ui(self):
+        if self._closed:
+            return
+        for _ in range(100):
+            try:
+                generation, callback = self._ui_queue.get_nowait()
+            except queue.Empty:
+                break
+            if generation is not None and generation != self._page_generation:
+                continue
+            try:
+                callback()
+            except Exception as exc:
+                self._callback_error(type(exc), exc, exc.__traceback__)
+        self.root.after(30, self._drain_ui)
+
+    def _run_job(self, callback):
+        generation = self._page_generation
+        def worker():
+            self._job_local.generation = generation
+            try:
+                callback()
+            except Exception as exc:
+                error = str(exc)
+                self._dispatch(lambda error=error: self._job_failed(error))
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        return thread
+
+    def _job_failed(self, error):
+        self._scan_running = False
+        for name in ("_scan_btn", "_vuln_btn", "_send_btn"):
+            widget = getattr(self, name, None)
+            if widget is not None and widget.winfo_exists():
+                widget.config(state="normal")
+        messagebox.showerror("Opération interrompue", error)
+
+    def _callback_error(self, kind, error, tb):
+        if self._controller:
+            self._controller.log.error("GUI: " + "".join(traceback.format_exception(kind, error, tb)))
+        if not self._closed:
+            messagebox.showerror("Erreur", str(error))
+
+    def _close(self):
+        if self._closed:
+            return
+        self._closed = True
+        for identifier in self.root.tk.call("after", "info"):
+            self.root.after_cancel(identifier)
+        if self._controller:
+            self._controller.stop_protection()
+            self._controller.auth.logout()
+            self._controller.log.flush_chain()
+        if hasattr(self, "_auth"):
+            self._auth.logout()
+        self.root.destroy()
 
     def run(self): self.root.mainloop()

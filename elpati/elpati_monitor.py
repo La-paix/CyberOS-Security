@@ -12,6 +12,7 @@ class ElpatiMonitor:
         from elpati.elpati_log import ElpatiLog
         self.log = ElpatiLog()
         self._active = False
+        self._stop_event = threading.Event()
         self._thread = None
         self._events = deque(maxlen=1000)
         self._process_baseline = {}
@@ -23,6 +24,9 @@ class ElpatiMonitor:
     def start(self):
         if self._active:
             return
+        self._stop_event.clear()
+        if self._active:
+            return
         self._active = True
         self._snapshot_baseline()
         self._thread = threading.Thread(target=self._monitor_loop,
@@ -32,6 +36,10 @@ class ElpatiMonitor:
 
     def stop(self):
         self._active = False
+        self._stop_event.set()
+        worker = getattr(self, "_thread", None) or getattr(self, "_monitor_thread", None)
+        if worker and worker is not threading.current_thread():
+            worker.join(timeout=2)
         self.log.info("ELPATI Monitor stopped")
 
     def _snapshot_baseline(self):
@@ -56,7 +64,7 @@ class ElpatiMonitor:
                 iteration += 1
             except Exception as e:
                 self.log.error(f"Monitor loop error: {e}")
-            time.sleep(2)
+            self._stop_event.wait(2)
 
     def _check_new_processes(self):
         try:

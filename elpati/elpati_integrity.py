@@ -4,6 +4,7 @@ File Integrity Monitoring — comme Tripwire ou OSSEC
 Surveille les fichiers critiques et détecte toute modification
 """
 import os, hashlib, json, threading, time
+from utils.storage import write_json
 from pathlib import Path
 from datetime import datetime
 
@@ -28,17 +29,19 @@ class ElpatiIntegrity:
         self._alert_callbacks = []
         self._active = False
         self._thread = None
+        self._stop = threading.Event()
         self._changes = []
 
     def _load_baseline(self):
         if FIM_DB.exists():
             try: return json.loads(FIM_DB.read_text(encoding='utf-8'))
-            except: pass
+            except Exception as exc:
+                raise ValueError("Baseline FIM corrompue") from exc
         return {}
 
     def _save_baseline(self):
         FIM_DB.parent.mkdir(parents=True, exist_ok=True)
-        FIM_DB.write_text(json.dumps(self._baseline, indent=2), encoding='utf-8')
+        write_json(FIM_DB, self._baseline)
 
     def _hash_file(self, path):
         try:
@@ -48,7 +51,7 @@ class ElpatiIntegrity:
             return h.hexdigest()
         except: return None
 
-    def create_baseline(self, paths=None):
+    def create_baseline(self, paths=None, overwrite=False):
         """Créer la baseline d'intégrité."""
         if paths is None:
             import platform
@@ -56,7 +59,7 @@ class ElpatiIntegrity:
         count = 0
         for path in paths:
             p = Path(path)
-            if p.exists() and p.is_file():
+            if p.exists() and p.is_file() and (overwrite or str(p) not in self._baseline):
                 h = self._hash_file(str(p))
                 if h:
                     self._baseline[str(p)] = {
@@ -89,7 +92,9 @@ class ElpatiIntegrity:
                 self.log.threat(f"FIM: Fichier supprimé: {fpath}")
             else:
                 curr_hash = self._hash_file(fpath)
-                if curr_hash and curr_hash != info["hash"]:
+                if curr_hash is None:
+                    changes.append({"path": fpath, "type": "UNREADABLE", "score": 50})
+                elif curr_hash != info["hash"]:
                     changes.append({"path": fpath, "type": "MODIFIED",
                                     "old_hash": info["hash"][:12], "new_hash": curr_hash[:12],
                                     "score": 85})
@@ -101,16 +106,23 @@ class ElpatiIntegrity:
         return changes
 
     def start_monitoring(self, interval=60):
+        if self._active:
+            return
+        self._stop.clear()
         self._active = True
         def _loop():
             while self._active:
                 self.check_integrity()
-                time.sleep(interval)
+                self._stop.wait(interval)
         self._thread = threading.Thread(target=_loop, daemon=True, name="ELPATI-FIM")
         self._thread.start()
         self.log.info("FIM: Surveillance démarrée")
 
-    def stop_monitoring(self): self._active = False
+    def stop_monitoring(self):
+        self._active = False
+        self._stop.set()
+        if self._thread and self._thread is not threading.current_thread():
+            self._thread.join(timeout=2)
     def register_alert_callback(self, cb): self._alert_callbacks.append(cb)
     def get_watched_count(self): return len(self._baseline)
     def get_changes(self): return self._changes

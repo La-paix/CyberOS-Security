@@ -1,347 +1,51 @@
-# 📖 GUIDE COMPLET — CyberOS_Security v2026.2
-## Système ELPATI | EDR/XDR Platform
-
----
-
-## 🚀 INSTALLATION RAPIDE
-
-### Prérequis
-- Python 3.9+ (https://python.org)
-- Système: Windows 10/11, Linux (Ubuntu/Debian/Arch), macOS 12+
-
-### Étape 1 — Décompresser
-```
-Décompressez CyberOS_Security_v2026.2.zip dans le dossier de votre choix
-```
-
-### Étape 2 — Installer les dépendances
-```bash
-# Ouvrir un terminal dans le dossier CyberOS_Security/
-pip install psutil cryptography
-```
-
-### Étape 3 — Lancer l'application
-```bash
-# Interface graphique (recommandé)
-python main.py
-
-# Mode ligne de commande
-python main.py --cli
-```
-
-### Étape 4 — Première connexion
-- Mot de passe par défaut: **cyberos2026**
-- Changez-le immédiatement dans Paramètres → Sécurité
-
----
-
-## 🔐 MOT DE PASSE ADMIN
-
-**Changer le mot de passe (GUI):**
-1. Connectez-vous avec `cyberos2026`
-2. Menu → Paramètres → 🔒 Sécurité
-3. Entrez l'ancien mot de passe
-4. Entrez et confirmez le nouveau (min. 6 caractères)
-5. Cliquez "CHANGER LE MOT DE PASSE"
-
-**Changer le mot de passe (CLI):**
-```
-Lors du login CLI, entrez l'ancien mot de passe
-Puis allez dans le menu et choisissez l'option Sécurité
-```
-
----
-
-## 💳 SYSTÈME DE LICENCES
-
-### Niveaux disponibles
-
-| Fonctionnalité         | GRATUIT | PRO     | ENTERPRISE |
-|------------------------|---------|---------|------------|
-| Scan rapide            | ✓       | ✓       | ✓          |
-| Scan complet           | ✗       | ✓       | ✓          |
-| Protection temps réel  | ✗       | ✓       | ✓          |
-| Scan mémoire RAM       | ✗       | ✓       | ✓          |
-| Surveillance réseau    | ✗       | ✓       | ✓          |
-| Analyse IA locale      | ✗       | ✓       | ✓          |
-| Analyse Claude AI      | ✗       | ✓       | ✓          |
-| Rapports forensic      | ✗       | ✓       | ✓          |
-| Anti-ransomware        | ✗       | ✓       | ✓          |
-| Sandbox                | ✗       | ✓       | ✓          |
-| Multi-postes           | ✗       | ✗       | ✓          |
-| Prix                   | 0€      | 49€/an  | 199€/an    |
-
-### Générer une clé de licence (Admin)
-**Via GUI:**
-1. Paramètres → 💳 Licences
-2. Choisissez niveau (FREE/PRO/ENTERPRISE) et durée en jours
-3. Cliquez "GÉNÉRER LA CLÉ"
-4. Copiez la clé générée
-
-**Via Python:**
-```python
-from elpati.elpati_payment import ElpatiPayment
-pay = ElpatiPayment()
-# Clé PRO 1 an
-key = pay.generate_key("PRO", 365)
-print(key)
-# Clé Enterprise 1 an
-key_ent = pay.generate_key("ENTERPRISE", 365)
-print(key_ent)
-# Clé démo 7 jours
-demo = pay.generate_demo_key()
-print(demo)
-```
-
-### Activer une licence
-**Via GUI:**
-1. Paramètres → 💳 Licences
-2. Collez la clé dans "ACTIVER UNE LICENCE"
-3. Cliquez "ACTIVER"
-
-**Via CLI:**
-```
-Menu → Option 12 → Entrez la clé
-```
-
----
-
-## 🧠 INTELLIGENCE ARTIFICIELLE
-
-### Mode IA Locale (sans clé API)
-L'application fonctionne à 100% hors-ligne avec:
-- Scoring heuristique multi-facteurs
-- Corrélation multi-modules
-- Analyse comportementale
-- Règles YARA embarquées
-
-### Mode Claude AI (avec clé API)
-Avec une clé Anthropic, l'analyse est encore plus puissante:
-- Analyse contextuelle profonde
-- Explications détaillées en français
-- Recommandations d'actions précises
-
-**Configurer la clé API:**
-1. Allez sur https://console.anthropic.com
-2. Créez un compte → API Keys → Create Key
-3. Dans l'app: Paramètres → 🧠 Clé API IA
-4. Collez votre clé (commence par `sk-ant-`)
-5. Cliquez "SAUVEGARDER" puis "TESTER LA CONNEXION"
-
-> La clé est stockée chiffrée AES-256 sur votre machine. Elle ne quitte jamais votre ordinateur sauf pour les appels API directs.
-
----
-
-## 🎨 PERSONNALISATION
-
-### Thèmes visuels
-Paramètres → 🎨 Apparence → Thème:
-- 🌑 **Sombre** — Thème cybersécurité par défaut
-- ☀️ **Clair** — Fond blanc, adapté à la lumière du jour
-- ⚡ **Contraste élevé** — Pour les malvoyants (fond noir, texte blanc/jaune)
-- 🌊 **Bleu nuit** — Tons bleus professionnels
-- 💚 **Matrix Vert** — Style terminal vert
-
-### Taille de police
-Paramètres → 🎨 Apparence → Taille de police:
-- 🔡 **Petite** (8pt)
-- 🔤 **Moyenne** (10pt) — défaut
-- 🔠 **Grande** (12pt) — recommandé si difficultés visuelles
-- 🅰️ **Très grande** (15pt) — pour malvoyants
-
-### Langue
-Paramètres → 🌐 Langue:
-- 🇫🇷 Français (défaut)
-- 🇬🇧 English
-- 🇪🇸 Español
-
----
-
-## 🛡️ FONCTIONNALITÉS PRINCIPALES
-
-### Scan Rapide
-Analyse les emplacements critiques du système (TEMP, AppData, Downloads).
-Durée: 30 secondes à 5 minutes.
-
-### Scan Complet
-Analyse complète d'un dossier ou disque entier.
-Durée: variable selon le volume.
-
-### Protection en Temps Réel
-Surveille en continu:
-- Création de nouveaux processus
-- Connexions réseau
-- Modifications de fichiers
-- Comportements suspects
-
-### Anti-Ransomware
-- Fichiers honeypots (pièges)
-- Détection d'entropie élevée (fichiers chiffrés)
-- Blocage des modifications massives
-- Détection des extensions malveillantes
-
-### Analyse Mémoire
-- Détection de code injecté
-- Régions mémoire exécutables anonymes
-- Patterns malveillants en RAM
-
-### Forensic
-Génère un rapport complet incluant:
-- Snapshot système
-- Liste des processus
-- Connexions réseau
-- Fichiers récents
-- Comptes utilisateurs
-- Hachage d'intégrité
-
----
-
-## ⚙️ ARCHITECTURE SÉCURISÉE
-
-```
-Interface Utilisateur
-        ↓
-Contrôleur Central ELPATI
-        ↓
-Modules ELPATI (14 modules)
-        ↓
-Moteur CyberOS (scan, analyse, forensic)
-        ↓
-Security Vault (coffre-fort chiffré)
-        ↓
-Système d'exploitation
-```
-
-### Sécurité des données
-- Logs chaînés cryptographiquement (comme une blockchain)
-- Clés chiffrées AES-256-GCM
-- Signatures RSA-4096
-- Dérivation PBKDF2 avec 600 000 itérations
-- Auto-protection: détection de tampering au démarrage
-
----
-
-## 📱 UTILISATION SUR DIFFÉRENTS SYSTÈMES
-
-### Windows
-```cmd
-cd C:\CyberOS_Security
-pip install psutil cryptography
-python main.py
-```
-> Note: Pour le scan complet, lancez en tant qu'Administrateur
-
-### Linux / Ubuntu
-```bash
-cd ~/CyberOS_Security
-pip3 install psutil cryptography
-python3 main.py
-```
-> Note: `sudo python3 main.py` pour accès système complet
-
-### macOS
-```bash
-cd ~/CyberOS_Security
-pip3 install psutil cryptography
-python3 main.py
-```
-
----
-
-## 🔧 DÉPANNAGE
-
-**Problème: "tkinter not found"**
-```bash
-# Ubuntu/Debian
-sudo apt install python3-tk
-# macOS
-brew install python-tk
-# Windows: réinstaller Python avec tkinter coché
-```
-
-**Problème: Permission refusée**
-```bash
-sudo python3 main.py  # Linux/macOS
-# Windows: Clic droit → Exécuter en admin
-```
-
-**Problème: Mot de passe oublié**
-```bash
-# Supprimer le fichier de mot de passe
-rm security/auth/password.enc
-# Redémarrer → mot de passe redevient cyberos2026
-```
-
-**Problème: Clé API ne fonctionne pas**
-- Vérifiez que la clé commence par `sk-ant-`
-- Vérifiez votre connexion internet pour les appels Claude
-- L'IA locale fonctionne toujours sans clé API
-
----
-
-## 📊 SCORING DES MENACES
-
-| Score | Niveau   | Action automatique          |
-|-------|----------|-----------------------------|
-| 0-19  | PROPRE   | Aucune                      |
-| 20-39 | FAIBLE   | Surveillance                |
-| 40-59 | MOYEN    | Alerte administrateur       |
-| 60-79 | ÉLEVÉ    | Isolation du processus      |
-| 80-100| CRITIQUE | Suppression + quarantaine   |
-
----
-
-## 🔄 MISES À JOUR
-
-Pour mettre à jour CyberOS_Security:
-1. Téléchargez la nouvelle version
-2. Copiez vos fichiers `security/` dans le nouveau dossier
-3. Vos licences, mots de passe et configurations sont préservés
-
----
-
-## 📞 SUPPORT
-
-- Communauté: Ouvrez une issue sur le dépôt
-- Pro: Support email 48h avec votre numéro de licence
-- Enterprise: Support prioritaire 24h
-
----
-
-**CyberOS_Security v2026.2 — Système ELPATI**
-*Protection locale · Intelligence embarquée · Architecture 2026-2036*
-
----
-
-## 🧠 CONFIGURATION CLÉ API (ADMIN UNIQUEMENT)
-
-La clé API Anthropic ne s'entre **jamais** dans l'interface utilisateur.
-Elle est gérée uniquement par l'administrateur via le fichier `config.env`.
-
-### Pourquoi ce choix ?
-- Sécurité : la clé n'est jamais exposée dans l'UI ni dans les logs
-- Contrôle : seul l'admin du poste peut activer/désactiver l'IA Claude
-- Séparation : les utilisateurs finaux n'ont pas accès à la configuration
-
-### Activer Claude AI
-
-1. Ouvrez `config.env` à la racine du projet avec Notepad / VS Code
-2. Trouvez la ligne :
-   ```
-   ANTHROPIC_API_KEY=
-   ```
-3. Ajoutez votre clé :
-   ```
-   ANTHROPIC_API_KEY=sk-ant-votre-cle-ici
-   ```
-4. Sauvegardez, relancez l'application
-5. Dans Paramètres → IA, cliquez "RECHARGER config.env"
-
-### Sans clé API
-L'application fonctionne à 100% en IA locale.
-Le score de menace, l'analyse comportementale, les règles YARA — tout fonctionne hors-ligne.
-
-### ⚠ Règles de sécurité
-- Ne jamais partager `config.env` avec les utilisateurs
-- Ne jamais commiter `config.env` sur Git (ajoutez-le à `.gitignore`)
-- La clé n'est jamais stockée en base de données ni chiffrée dans l'app
+# Guide utilisateur — 2026.2.1
+
+Ce guide remplace les instructions historiques sur le mot de passe par défaut, les clés partagées et le générateur de licences intégré.
+
+## Connexion et fichiers
+
+Consulter [INSTALLATION_WINDOWS.md](INSTALLATION_WINDOWS.md). Créer un mot de passe au premier lancement. Une corruption bloque l'accès : ne pas supprimer des fichiers pour tenter de revenir au mot de passe par défaut.
+
+Scan rapide sélectionne des emplacements courants et examine leurs deux premiers niveaux de sous-dossiers. Les sous-dossiers plus profonds ne sont pas couverts par ce mode. Scan complet demande un dossier et descend récursivement. Le moteur déduplique les chemins et exclut notamment liens symboliques, données internes et fichiers de plus de 100 Mio. STOP annule les travaux en attente ; quelques fichiers déjà en lecture peuvent se terminer.
+
+Le résultat indique annulation, erreurs et exclusions. Il distingue les correspondances de signatures des indices statiques à examiner. Une correspondance identifie une empreinte enregistrée, pas une infection active. Une absence de détection ne prouve pas l'absence d'infection. Les heuristiques peuvent donner des faux positifs. La mise en quarantaine automatique est désactivée par défaut ; même activée, elle ne traite pas les indices non confirmés.
+
+Une API comme GetProcAddress, une forte entropie ou une extension générique .enc ne suffisent pas à établir une menace. Le fichier reste contrôlé par empreinte. Les anciens compteurs de scans sont conservés et représentent des alertes cumulées, pas un nombre de virus confirmés.
+
+## Quarantaine
+
+Sélectionner une entrée puis RESTAURER ou SUPPRIMER. Une restauration ne remplace pas un fichier existant ; choisir un autre chemin si nécessaire. La suppression détruit le contenu chiffré local, sous réserve des sauvegardes conservées.
+
+Sauvegarder ensemble quarantine/vault et security/keys. Ne jamais les publier.
+
+## Processus, mémoire et réseau
+
+Les écrans montrent les informations accessibles au compte courant. L'analyse mémoire utilise des métadonnées et certaines régions Linux accessibles ; elle ne réalise pas un dump complet de RAM Windows et ne garantit pas de détecter tout code injecté.
+
+Les modules de surveillance interrogent périodiquement le système. Les leurres ne surveillent pas toutes les écritures de tous les dossiers. Les contrôles locaux de configuration ne constituent pas un inventaire complet des CVE ou correctifs.
+
+Les actions de pare-feu/processus dépendent des droits et du système. Le mode passif est choisi par défaut. Réduire la priorité d'un processus ne l'isole pas du réseau.
+
+## URL et assistant
+
+Le scanner contacte l'URL et effectue des contrôles TLS/DNS/HTTP et des heuristiques locales. Il n'utilise pas VirusTotal et n'est pas un service de réputation exhaustif. INCONCLUSIF indique des contrôles inaccessibles. Un faible score ne prouve pas qu'un site est sûr.
+
+L'assistant local donne une aide embarquée. L'API distante requiert une activation explicite dans config.env ; elle peut entraîner une facturation et une transmission d'indicateurs/conversations. Une panne distante déclenche le repli local.
+
+## Rapports
+
+Le menu Forensic produit JSON et PDF. Pour le PDF d'un scan ou d'une URL, lancer l'analyse correspondante d'abord. Les rapports peuvent contenir noms de processus, chemins et informations privées.
+
+Le PDF est une synthèse : il affiche les compteurs, les limites et un aperçu de 20 alertes prioritaires. Le fichier JSON du même nom, dans le même dossier, conserve les données détaillées fournies à l'export, notamment toutes les alertes du scan. Le journal exporté reste limité aux 200 événements récents. L'interface affiche au plus 200 alertes ; cela ne limite pas les résultats enregistrés dans le JSON. Ne publiez pas ces fichiers privés sur GitHub.
+
+Le coffre chiffre les preuves et vérifie leur empreinte lors de la lecture. Les journaux restent lisibles et sont reliés par des empreintes. Ces mécanismes ne sont pas inviolables face à une personne qui maîtrise complètement le dossier et ne constituent pas une certification externe.
+
+## Planification et fermeture
+
+Choisir nom, type et horaire. L'API du planificateur accepte aussi jours ouvrés, fins de semaine et jour nommé. Les horaires suivent le fuseau du PC. Le programme doit rester lancé : aucun service Windows n'est installé.
+
+Fermer la fenêtre arrête la surveillance, les rappels d'interface et le planificateur.
+
+## Sauvegardes
+
+Conserver ensemble security/keys, security/auth, security/vault et quarantine/vault. Une clé perdue ne peut pas être reconstituée à partir des sources. La migration d'une ancienne installation est documentée dans le guide Windows.

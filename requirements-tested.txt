@@ -1,0 +1,6 @@
+# Versions directes et transitives validées sous Linux / Python 3.12.
+-r requirements.txt
+pillow==12.3.0
+cffi==2.1.1
+pycparser==3.11
+charset-normalizer==3.5.2

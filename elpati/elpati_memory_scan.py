@@ -27,6 +27,7 @@ class ElpatiMemoryScan:
         """Scan process memory for suspicious patterns."""
         findings = []
         score = 0
+        coverage = "metadata"
         try:
             proc = psutil.Process(pid)
             proc_name = proc.name()
@@ -37,10 +38,10 @@ class ElpatiMemoryScan:
                 for mmap in maps:
                     # Check for executable regions not backed by files
                     if hasattr(mmap, 'perms') and 'x' in mmap.perms:
-                        if not mmap.path or mmap.path == '':
+                        if not mmap.path or mmap.path in {"", "[anon]"}:
                             findings.append({
                                 "type": "ANONYMOUS_EXEC_REGION",
-                                "addr": hex(mmap.addr) if hasattr(mmap, 'addr') else "unknown",
+                                "addr": str(getattr(mmap, "addr", "unknown")),
                                 "size": mmap.size if hasattr(mmap, 'size') else 0,
                                 "score": 70
                             })
@@ -53,6 +54,7 @@ class ElpatiMemoryScan:
                 result = self._scan_linux_process_memory(pid)
                 findings.extend(result["findings"])
                 score += result["score"]
+                coverage = result.get("coverage", "metadata")
 
             # Check for known bad modules
             try:
@@ -69,6 +71,7 @@ class ElpatiMemoryScan:
             return {
                 "pid": pid, "name": proc_name, "score": min(score, 100),
                 "findings": findings, "ts": datetime.utcnow().isoformat(),
+                "coverage": coverage,
                 "risk": "CRITICAL" if score > 75 else "HIGH" if score > 50 else "MEDIUM" if score > 25 else "LOW"
             }
         except psutil.NoSuchProcess:
@@ -123,7 +126,8 @@ class ElpatiMemoryScan:
         except Exception as e:
             pass
 
-        return {"findings": findings, "score": score}
+        return {"findings": findings, "score": score,
+                "coverage": "partial_linux_memory" if findings else "metadata_or_partial_memory"}
 
     def scan_all_processes(self, top_risk_only=True) -> list:
         results = []
